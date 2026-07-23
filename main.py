@@ -14,8 +14,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
 ADMIN_ID = 8668319365
-CHANNEL_USERNAME = "@starmobile63956"
-ITEMS_PER_PAGE = 5
+CHANNEL_USERNAME = "@starmobile63956"  # သင့်ရဲ့ Channel Username
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -61,7 +60,6 @@ def init_db():
                 price REAL,
                 contact_info TEXT,
                 ref_id INTEGER,
-                status TEXT DEFAULT 'PENDING',
                 date TIMESTAMP DEFAULT (datetime('now', 'localtime'))
             )
         ''')
@@ -280,6 +278,7 @@ def process_buy(call):
 
     phone, price, _ = item
     
+    # ဝယ်သူဆီ အော်ဒါဖျက်ရန် ခလုတ်ပါဝင်ခြင်း
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
@@ -330,20 +329,19 @@ def save_order(message, phone, price, n_id):
         order_id = cursor.lastrowid
         conn.commit()
 
-    # ဝယ်သူဆီသို့ အော်ဒါအောင်မြင်ကြောင်း အကြောင်းကြားစာ ပို့ခြင်း
     res_text = (
         f"🎉 *အော်ဒါတင်ယူခြင်း အောင်မြင်ပါသည်။*\n\n"
         f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
         f"💰 **ဖုန်းတန်ဖိုး:** `{price:,.0f}` ကျပ် (အိမ်ရောက်ငွေချေ)\n"
         f"🚚 **Deli ခ:** `4,000` ကျပ် (ကြိုလွှဲပြီး)\n"
         f"📍 **ပေးပို့ရမည့် အချက်အလက်:**\n{contact_info}\n\n"
-        f"ငွေလွှဲ Screenshot နှင့်အတူ Admin ထံ ဆက်သွယ်ပေးပါခင်ဗျာ။"
+        f"ငွေလွှဲ Screenshot နှင့်အတူ Admin [@orange310199] ထံ ဆက်သွယ်ပေးပါခင်ဗျာ။"
     )
     bot.send_message(message.chat.id, res_text, reply_markup=main_menu(user_id), parse_mode="Markdown")
 
     admin_noti = (
         f"🚨 *အော်ဒါအသစ် ရောက်ရှိပါသည် (COD)!*\n\n"
-        f"👤 ဝယ်သူ: {message.from_user.first_name} (ID: `{user_id}`)\n"
+        f"👤 ဝယ်ယူသူ: {message.from_user.first_name}\n"
         f"📱 မှာယူသည့်နံပါတ်: `{phone}`\n"
         f"💰 ဖုန်းတန်ဖိုး: `{price:,.0f}` ကျပ်\n"
         f"📋 ဝယ်ယူသူ အချက်အလက်:\n{contact_info}"
@@ -378,7 +376,6 @@ def admin_reject_order(call):
             cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
             conn.commit()
             
-            # ဝယ်သူဆီသို့ အော်ဒါပယ်ဖျက်ခံရကြောင်း စာပို့ခြင်း
             try:
                 bot.send_message(uid, f"❌ သင့်ရဲ့ နံပါတ်အော်ဒါ (`{phone}`) မှာ ငွေလွှဲပြေစာ မမှန်ကန်မှု (သို့) အခြားအကြောင်းကြောင့် Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။", parse_mode="Markdown")
             except Exception:
@@ -417,23 +414,6 @@ def mark_order_done(call):
         pass
     bot.answer_callback_query(call.id, "အော်ဒါစာရင်းကို ရှင်းလင်းပြီးပါပြီ။")
 
-# 👑 Admin မှ ဝယ်သူထံသို့ တိုက်ရိုက် စာပို့နိုင်သောစနစ် (Reply or Command)
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.reply_to_message is not None)
-def admin_reply_to_user(message):
-    try:
-        replied_text = message.reply_to_message.text or message.reply_to_message.caption or ""
-        import re
-        # Admin ဆီ ရောက်လာတဲ့ order message ထဲက User ID ကို ရှာယူခြင်း
-        match = re.search(r'ID:\s*`(\d+)`', replied_text)
-        if match:
-            target_user_id = int(match.group(1))
-            bot.send_message(target_user_id, f"📩 *Admin ထံမှ မက်ဆေ့ခ်ဂျာ:*\n\n{message.text}", parse_mode="Markdown")
-            bot.reply_to(message, "✅ ဝယ်သူထံသို့ မက်ဆေ့ခ် ပို့ပြီးပါပြီ။")
-        else:
-            bot.reply_to(message, "❌ ဤမက်ဆေ့ခ်တွင် ဝယ်သူ၏ User ID မပါရှိပါ။ အော်ဒါ မက်ဆေ့ခ်ကို Reply ပေးပါ။")
-    except Exception as e:
-        bot.reply_to(message, f"❌ ပို့ရာတွင် အမှားရှိပါသည်: {e}")
-
 # 👑 Admin Panel
 @bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
 def admin_panel(message):
@@ -448,8 +428,7 @@ def admin_panel(message):
         "📌 *ဥပမာ (Lucky):* `/add_num lucky 09 25 123 4567 300000`\n\n"
         "📋 **နံပါတ်များအားလုံးကြည့်ရန် (ID ဖြင့်):**\n`/list`\n\n"
         "🗑️ **ရောင်းပြီးသားနံပါတ် ဖျက်ရန်:**\n`/del_num [ID ဂဏန်း]`\n\n"
-        "📥 **ဝယ်သူအော်ဒါများ Excel ထုတ်ရန်:**\n`/orders`\n\n"
-        "💬 **ဝယ်သူထံ စာပို့ရန်:** Bot ဆီ ရောက်လာသော အော်ဒါမက်ဆေ့ခ်ကို **Reply** ပေး၍ စာပို့နိုင်ပါသည်။"
+        "📥 **ဝယ်သူအော်ဒါများ Excel ထုတ်ရန်:**\n`/orders`"
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
@@ -480,4 +459,32 @@ def add_new_number(message):
         
         bot.send_message(message.chat.id, f"✅ *အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!*\n\n🏷️ အမျိုးအစား: *{num_type}*\n📡 Operator: *{op}*\n📱 {phone}\n💰 {price:,.0f} ကျပ်", parse_mode="Markdown")
     except Exception:
-        bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။\nမှန်ကန်သော ပုံစံ:\n`/add_num pro 09 777 777 777 1500000`\n(သို့မဟုတ်)\n`/add_num lucky 09 
+        bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။\nမှန်ကန်သော ပုံစံ:\n`/add_num pro 09 777 777 777 1500000`\n(သို့မဟုတ်)\n`/add_num lucky 09 25 123 4567 300000`", parse_mode="Markdown")
+
+@bot.message_handler(commands=['list'])
+def list_numbers(message):
+    if message.from_user.id != ADMIN_ID: return
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, phone_number, operator, price, num_type, status FROM numbers")
+        rows = cursor.fetchall()
+    
+    if not rows:
+        bot.send_message(message.chat.id, "📭 နံပါတ်များ မရှိသေးပါ။")
+        return
+        
+    text = "📋 *ဆိုင်ရှိ ဖုန်းနံပါတ်စာရင်းအားလုံး*\n\n"
+    for r in rows:
+        tag = "✨ နံပါတ်လှ" if r[4] == "PRO" else "🍀 Lucky"
+        status_tag = "🟢 ရောင်းရန်" if r[5] == 'AVAILABLE' else "🔴 ရောင်းပြီး"
+        text += f"ID: `{r[0]}` | [{tag}] | {status_tag} | 📡 {r[2]} | 📱 {r[1]} | 💰 {r[3]:,.0f}\n"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['del_num'])
+def delete_number(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        n_id = message.text.split()[1]
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM num
