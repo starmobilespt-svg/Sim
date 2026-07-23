@@ -4,8 +4,7 @@ import telebot
 from telebot import types
 import math
 import logging
-import threading
-from flask import Flask
+from flask import Flask, request
 
 # Logging စနစ်
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -13,28 +12,17 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
 ADMIN_ID = 8668319365
 CHANNEL_USERNAME = "@starmobile63956"
-
 ITEMS_PER_PAGE = 5
 
 bot = telebot.TeleBot(TOKEN)
-
-# ----------------------------------------------------
-# 10 မိနစ်တစ်ခါ Ping လုပ်၍ Sleep မသွားစေရန် Flask Web Server
-# ----------------------------------------------------
 app = Flask(__name__)
 
+# ----------------------------------------------------
+# Render Health Check အတွက် Flask Route
+# ----------------------------------------------------
 @app.route('/')
 def home():
-    return "VIP Shop Bot is running 24/7 and active!"
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-# Background မှာ Flask Server ကို တပြိုင်နက် Run ထားခြင်း
-server_thread = threading.Thread(target=run_web_server)
-server_thread.daemon = True
-server_thread.start()
+    return "VIP Shop Bot is active and running!"
 
 # ----------------------------------------------------
 # Database စနစ်
@@ -43,7 +31,6 @@ def init_db():
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
-        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS numbers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +41,6 @@ def init_db():
                 status TEXT DEFAULT 'AVAILABLE'
             )
         ''')
-        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +51,6 @@ def init_db():
                 status TEXT DEFAULT 'AVAILABLE'
             )
         ''')
-        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +65,6 @@ def init_db():
                 date TIMESTAMP DEFAULT (datetime('now', 'localtime'))
             )
         ''')
-        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -187,7 +171,6 @@ def show_numbers_by_type(message_or_call, n_type, page=1, is_edit=False):
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM numbers WHERE num_type=? AND status='AVAILABLE'", (n_type,))
         total_items = cursor.fetchone()[0]
-
         cursor.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE' LIMIT ? OFFSET ?", (n_type, ITEMS_PER_PAGE, offset))
         rows = cursor.fetchall()
     
@@ -210,7 +193,6 @@ def show_numbers_by_type(message_or_call, n_type, page=1, is_edit=False):
     nav_buttons.append(types.InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="ignore"))
     if page < total_pages:
         nav_buttons.append(types.InlineKeyboardButton("နောက်သို့ ➡️", callback_data=f"pnum_{n_type}_{page+1}"))
-    
     if len(nav_buttons) > 1:
         markup.row(*nav_buttons)
 
@@ -247,7 +229,6 @@ def filter_by_operator(call):
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM numbers WHERE operator=? AND status='AVAILABLE'", (op_name,))
         total_items = cursor.fetchone()[0]
-
         cursor.execute("SELECT id, phone_number, price, num_type FROM numbers WHERE operator=? AND status='AVAILABLE' LIMIT ? OFFSET ?", (op_name, ITEMS_PER_PAGE, offset))
         rows = cursor.fetchall()
     
@@ -267,7 +248,6 @@ def filter_by_operator(call):
     nav_buttons.append(types.InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="ignore"))
     if page < total_pages:
         nav_buttons.append(types.InlineKeyboardButton("နောက်သို့ ➡️", callback_data=f"op_{op_name}_{page+1}"))
-    
     if len(nav_buttons) > 1:
         markup.row(*nav_buttons)
 
@@ -328,7 +308,6 @@ def filter_acc_by_category(call):
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM accounts WHERE category=? AND status='AVAILABLE'", (cat_name,))
         total_items = cursor.fetchone()[0]
-
         cursor.execute("SELECT id, title, price FROM accounts WHERE category=? AND status='AVAILABLE' LIMIT ? OFFSET ?", (cat_name, ITEMS_PER_PAGE, offset))
         rows = cursor.fetchall()
 
@@ -347,7 +326,6 @@ def filter_acc_by_category(call):
     nav_buttons.append(types.InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="ignore"))
     if page < total_pages:
         nav_buttons.append(types.InlineKeyboardButton("နောက်သို့ ➡️", callback_data=f"cat_{cat_name}_{page+1}"))
-    
     if len(nav_buttons) > 1:
         markup.row(*nav_buttons)
 
@@ -457,4 +435,15 @@ def save_order(message, item_type, title, price, ref_id):
     user_name = message.from_user.first_name
     username = message.from_user.username
     
-    photo_file_
+    photo_file_id = None
+    info_text = message.text or "ငွေလွှဲပြေစာ ဓာတ်ပုံ ပေးပို့ထားပါသည်"
+
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+        if message.caption:
+            info_text = f"📷 Photo + Caption: {message.caption}"
+
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO orders (user_id, cu
