@@ -2,25 +2,12 @@ import os
 import sqlite3
 import telebot
 from telebot import types
-import math
-import logging
-import threading
-from flask import Flask
 import csv
 import io
+import threading
+from flask import Flask
 
-# Logging စနစ်
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
-ADMIN_ID = 8668319365
-CHANNEL_USERNAME = "@starmobile63956"  # သင့်ရဲ့ Channel Username
-
-bot = telebot.TeleBot(TOKEN)
-
-# ----------------------------------------------------
-# Render Web Service မပိတ်သွားစေရန် Flask Web Server
-# ----------------------------------------------------
+# 🌐 Render Web Service မပိတ်သွားစေရန် Flask Web Server
 app = Flask(__name__)
 
 @app.route('/')
@@ -35,35 +22,40 @@ server_thread = threading.Thread(target=run_web_server)
 server_thread.daemon = True
 server_thread.start()
 
-# ----------------------------------------------------
+TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
+ADMIN_ID = 8668319365
+CHANNEL_USERNAME = "@starmobile63956"  # သင့်ရဲ့ Channel Username
+
+bot = telebot.TeleBot(TOKEN)
+
 # 🗄️ Database တည်ဆောက်ခြင်း
-# ----------------------------------------------------
 def init_db():
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS numbers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone_number TEXT,
-                operator TEXT,
-                price REAL,
-                num_type TEXT,
-                status TEXT DEFAULT 'AVAILABLE'
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                customer_name TEXT,
-                chosen_number TEXT,
-                price REAL,
-                contact_info TEXT,
-                ref_id INTEGER,
-                date TIMESTAMP DEFAULT (datetime('now', 'localtime'))
-            )
-        ''')
-        conn.commit()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS numbers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone_number TEXT,
+            operator TEXT,
+            price REAL,
+            num_type TEXT,
+            status TEXT DEFAULT 'AVAILABLE'
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            customer_name TEXT,
+            chosen_number TEXT,
+            price REAL,
+            contact_info TEXT,
+            ref_id INTEGER,
+            date TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 init_db()
 
@@ -174,13 +166,14 @@ def show_lucky_numbers(message):
     show_numbers_by_type(message, "LUCKY", "🍀 ရောင်းရန်ရှိသော Lucky Phone များ -")
 
 def show_numbers_by_type(message, n_type, title_text):
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE'", (n_type,))
-        rows = cursor.fetchall()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE'", (n_type,))
+    rows = cursor.fetchall()
+    conn.close()
 
     if not rows:
-        bot.send_message(message.chat.id, "📭 လောလောဆယ် ဤစာရင်းတွင် နံပါတ်များ မရှိသေးပါ။")
+        bot.send_message(message.chat.id, f"📭 လောလောဆယ် ဤစာရင်းတွင် နံပါတ်များ မရှိသေးပါ။")
         return
 
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -211,10 +204,11 @@ def filter_by_operator(call):
         return
 
     op_name = call.data.split("_")[1]
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, phone_number, price, num_type FROM numbers WHERE operator=? AND status='AVAILABLE'", (op_name,))
-        rows = cursor.fetchall()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, phone_number, price, num_type FROM numbers WHERE operator=? AND status='AVAILABLE'", (op_name,))
+    rows = cursor.fetchall()
+    conn.close()
 
     if not rows:
         bot.answer_callback_query(call.id, f"{op_name} နံပါတ်များ လောလောဆယ် မရှိသေးပါ။")
@@ -241,10 +235,11 @@ def process_search(message):
         return
 
     keyword = message.text.strip()
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, phone_number, operator, price, num_type FROM numbers WHERE phone_number LIKE ? AND status='AVAILABLE'", (f'%{keyword}%',))
-        rows = cursor.fetchall()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, phone_number, operator, price, num_type FROM numbers WHERE phone_number LIKE ? AND status='AVAILABLE'", (f'%{keyword}%',))
+    rows = cursor.fetchall()
+    conn.close()
 
     if not rows:
         bot.send_message(message.chat.id, f"❌ `{keyword}` ပါဝင်သော နံပါတ်များ ရှာမတွေ့ပါ။", parse_mode="Markdown")
@@ -267,10 +262,11 @@ def process_buy(call):
         return
 
     n_id = call.data.split("_")[1]
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT phone_number, price, status FROM numbers WHERE id=?", (n_id,))
-        item = cursor.fetchone()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT phone_number, price, status FROM numbers WHERE id=?", (n_id,))
+    item = cursor.fetchone()
+    conn.close()
 
     if not item or item[2] == 'SOLD':
         bot.answer_callback_query(call.id, "ဤနံပါတ် ရောင်းထွက်သွားပြီ (သို့) မရှိတော့ပါ။", show_alert=True)
@@ -278,6 +274,7 @@ def process_buy(call):
 
     phone, price, _ = item
     
+    # ဝယ်သူဘက်မှ Cancel လုပ်ရန် ခလုတ်ထည့်သွင်းခြင်း
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
@@ -318,24 +315,26 @@ def save_order(message, phone, price, n_id):
     contact_info = message.text
     user_id = message.from_user.id
     
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
-        cursor.execute(
-            "INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, message.from_user.first_name, phone, price, contact_info, n_id)
-        )
-        order_id = cursor.lastrowid
-        conn.commit()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    # နံပါတ်ကို SOLD ပြောင်းမည်
+    cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
+    cursor.execute(
+        "INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, message.from_user.first_name, phone, price, contact_info, n_id)
+    )
+    order_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
 
-    # ဝယ်သူဆီသို့ အော်ဒါအောင်မြင်ကြောင်း စာပို့ခြင်း
+    # ဝယ်သူဆီသို့ အော်ဒါတင်ခြင်း အောင်မြင်ကြောင်း စာပို့ခြင်း
     res_text = (
         f"🎉 *အော်ဒါတင်ယူခြင်း အောင်မြင်ပါသည်။*\n\n"
         f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
         f"💰 **ဖုန်းတန်ဖိုး:** `{price:,.0f}` ကျပ် (အိမ်ရောက်ငွေချေ)\n"
         f"🚚 **Deli ခ:** `4,000` ကျပ် (ကြိုလွှဲပြီး)\n"
         f"📍 **ပေးပို့ရမည့် အချက်အလက်:**\n{contact_info}\n\n"
-        f"ငွေလွှဲ Screenshot နှင့်အတူ Admin ထံ ဆက်သွယ်ပေးပါခင်ဗျာ။"
+        f"ငွေလွှဲ Screenshot နှင့်အတူ Admin [@orange310199] ထံ ဆက်သွယ်ပေးပါခင်ဗျာ။"
     )
     bot.send_message(message.chat.id, res_text, reply_markup=main_menu(user_id), parse_mode="Markdown")
 
@@ -344,9 +343,10 @@ def save_order(message, phone, price, n_id):
         f"👤 ဝယ်ယူသူ: {message.from_user.first_name}\n"
         f"📱 မှာယူသည့်နံပါတ်: `{phone}`\n"
         f"💰 ဖုန်းတန်ဖိုး: `{price:,.0f}` ကျပ်\n"
-        f"📋 ဝယ်ယူသူ အချက်အလက်:\n{contact_info}"
+        f"📋 ဝယ်ယူသူ အချက်အလက် (နာမည်/ဖုန်း/လိပ်စာ):\n{contact_info}"
     )
     
+    # Admin အတွက် ပို့ပြီး (Done) နှင့် ပယ်ဖျက်မည် (Reject) ခလုတ်များ
     admin_markup = types.InlineKeyboardMarkup(row_width=2)
     admin_markup.add(
         types.InlineKeyboardButton("✅ ပို့ပြီး (ဖျက်မည်)", callback_data=f"done_{order_id}"),
@@ -358,28 +358,32 @@ def save_order(message, phone, price, n_id):
     except Exception:
         pass
 
+# ❌ Admin ဘက်မှ အော်ဒါကို ပယ်ဖျက်ခြင်း (Reject / Cancel)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("reject_"))
 def admin_reject_order(call):
     if call.from_user.id != ADMIN_ID:
         return
     
     o_id = call.data.split("_")[1]
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, chosen_number, ref_id FROM orders WHERE id=?", (o_id,))
-        order = cursor.fetchone()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, chosen_number, ref_id FROM orders WHERE id=?", (o_id,))
+    order = cursor.fetchone()
+    
+    if order:
+        uid, phone, ref_id = order
+        # နံပါတ်ကို ပြန်လည်ရောင်းချနိုင်ရန် AVAILABLE သို့ ပြောင်းမည်
+        if ref_id:
+            cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
+        cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
+        conn.commit()
+        conn.close()
         
-        if order:
-            uid, phone, ref_id = order
-            if ref_id:
-                cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
-            cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
-            conn.commit()
-            
-            try:
-                bot.send_message(uid, f"❌ သင့်ရဲ့ နံပါတ်အော်ဒါ (`{phone}`) မှာ ငွေလွှဲပြေစာ မမှန်ကန်မှု (သို့) အခြားအကြောင်းကြောင့် Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။", parse_mode="Markdown")
-            except Exception:
-                pass
+        # ဝယ်သူထံ အကြောင်းကြားစာ ပို့မည်
+        try:
+            bot.send_message(uid, f"❌ သင့်ရဲ့ နံပါတ်အော်ဒါ (`{phone}`) မှာ ငွေလွှဲပြေစာ မမှန်ကန်မှု (သို့) အခြားအကြောင်းကြောင့် Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။", parse_mode="Markdown")
+        except Exception:
+            pass
 
     try:
         bot.edit_message_text(
@@ -398,10 +402,11 @@ def mark_order_done(call):
         return
     
     o_id = call.data.split("_")[1]
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
-        conn.commit()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
+    conn.commit()
+    conn.close()
     
     try:
         bot.edit_message_text(
@@ -452,11 +457,11 @@ def add_new_number(message):
         phone = " ".join(parts[2:-1])
         op = detect_operator(phone)
         
-        with sqlite3.connect('vip_shop.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, num_type))
-            conn.commit()
-        
+        conn = sqlite3.connect('vip_shop.db')
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO numbers (phone_number, operator, price, num_type, status) VALUES (?, ?, ?, ?, 'AVAILABLE')", (phone, op, price, num_type))
+        conn.commit()
+        conn.close()
         bot.send_message(message.chat.id, f"✅ *အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!*\n\n🏷️ အမျိုးအစား: *{num_type}*\n📡 Operator: *{op}*\n📱 {phone}\n💰 {price:,.0f} ကျပ်", parse_mode="Markdown")
     except Exception:
         bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။\nမှန်ကန်သော ပုံစံ:\n`/add_num pro 09 777 777 777 1500000`\n(သို့မဟုတ်)\n`/add_num lucky 09 25 123 4567 300000`", parse_mode="Markdown")
@@ -464,10 +469,11 @@ def add_new_number(message):
 @bot.message_handler(commands=['list'])
 def list_numbers(message):
     if message.from_user.id != ADMIN_ID: return
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, phone_number, operator, price, num_type, status FROM numbers")
-        rows = cursor.fetchall()
+    conn = sqlite3.connect('vip_shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, phone_number, operator, price, num_type, status FROM numbers")
+    rows = cursor.fetchall()
+    conn.close()
     
     if not rows:
         bot.send_message(message.chat.id, "📭 နံပါတ်များ မရှိသေးပါ။")
@@ -485,6 +491,10 @@ def delete_number(message):
     if message.from_user.id != ADMIN_ID: return
     try:
         n_id = message.text.split()[1]
-        with sqlite3.connect('vip_shop.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM numbers WH
+        conn = sqlite3.connect('vip_shop.db')
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM numbers WHERE id=?", (n_id,))
+        conn.commit()
+        conn.close()
+        bot.send_message(message.chat.id, f"✅ ID: {n_id} ကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။")
+    ex
