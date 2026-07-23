@@ -477,16 +477,268 @@ def process_buy(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
-    text_msg = f"""🎯 သင်ရွေးချယ်ထားသော နံပါတ် - *{phone}*
-💰 ကျသင့်ငွေ (ဖုန်းဘိုး) - `{price:,.0f}` ကျပ်
+    # Triple quotes (f""") အစား အလုံခြုံဆုံးဖြစ်သော လက်သည်းကွင်းနှင့်ပေါင်းသည့်နည်းကို သုံးထားပါသည်
+    text_msg = (
+        f"🎯 သင်ရွေးချယ်ထားသော နံပါတ် - *{phone}*\n"
+        f"💰 ကျသင့်ငွေ (ဖုန်းဘိုး) - `{price:,.0f}` ကျပ်\n\n"
+        f"📦 *အိမ်ရောက်ငွေချေ (COD) ဖြင့် ပို့ဆောင်ပေးမည်ဖြစ်ပါသည်။*\n"
+        f"သို့သော် Deli ခ **`4,000`** ကျပ်ကို အရင်ကြိုတင်လွှဲပေးရပါမည်။\n\n"
+        f"💳 **Deli ခ 4,000 လွှဲရန် အကောင့်များ:**\n"
+        f"🔹 *KPay:* `09795096484` (Si Thu Aung)\n"
+        f"🔹 *WavePay:* `09792654163` (Si Thu Aung)\n\n"
+        f"📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတွက် သင်၏ **နာမည်၊ ဖုန်းနံပါတ် နှင့် လိပ်စာအတိအကျ** ကို အောက်ပါပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ -\n\n"
+        f"*(ဥပမာ - မောင်မောင်၊ 09792654163၊ အမှတ်(၁၂)၊ ဗိုလ်ချုပ်လမ်း၊ ရန်ကုန်)*"
+    )
 
-📦 *အိမ်ရောက်ငွေချေ (COD) ဖြင့် ပို့ဆောင်ပေးမည်ဖြစ်ပါသည်။*
-သို့သော် Deli ခ **`4,000`** ကျပ်ကို အရင်ကြိုတင်လွှဲပေးရပါမည်။
+    msg = bot.send_message(
+        call.message.chat.id, 
+        text_msg,
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(msg, save_order, phone, price, n_id)
 
-💳 **Deli ခ 4,000 လွှဲရန် အကောင့်များ:**
-🔹 *KPay:* `09795096484` (Si Thu Aung)
-🔹 *WavePay:* `09792654163` (Si Thu Aung)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
+def user_cancel_buy(call):
+    bot.clear_step_handler_by_chat_id(call.message.chat.id)
+    try:
+        bot.edit_message_text("❌ *ဝယ်ယူမှုကို ဖျက်သိမ်းလိုက်ပါပြီ။*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    except Exception:
+        pass
 
-📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတွက် သင်၏ **နာမည်၊ ဖုန်းနံပါတ် နှင့် လိပ်စာအတိအကျ** ကို အောက်ပါပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ -
+def save_order(message, phone, price, n_id):
+    if not message.text:
+        msg = bot.send_message(message.chat.id, "⚠️ ကျေးဇူးပြု၍ စာသားဖြင့်သာ လိပ်စာကို ရိုက်ထည့်ပါ။")
+        bot.register_next_step_handler(msg, save_order, phone, price, n_id)
+        return
 
-*(ဥပမာ - မောင်မောင်၊ 09792654163၊ အမှတ်(၁၂)၊ ဗိုလ်ခ
+    contact_info = message.text
+    user_id = message.from_user.id
+    customer_name = message.from_user.first_name
+
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        
+        # နံပါတ် ရောင်းထွက်သွားခြင်း ရှိမရှိ ထပ်မံစစ်ဆေးခြင်း
+        cursor.execute("SELECT status FROM numbers WHERE id=?", (n_id,))
+        status = cursor.fetchone()
+        
+        if not status or status[0] == 'SOLD':
+            bot.send_message(message.chat.id, "❌ တောင်းပန်ပါသည်။ သင်ရွေးချယ်ထားသော နံပါတ်မှာ အခြားသူဝယ်ယူသွားပါပြီ။")
+            return
+
+        # အော်ဒါမှတ်တမ်းတင်ခြင်း
+        cursor.execute('''
+            INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, customer_name, phone, price, contact_info, n_id))
+        
+        order_id = cursor.lastrowid
+        
+        # နံပါတ်ကို SOLD (ရောင်းပြီး) အဖြစ် ပြောင်းလဲခြင်း
+        cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
+        conn.commit()
+
+    # ဝယ်သူအား အကြောင်းကြားခြင်း
+    success_text = (
+        f"✅ *အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။*\n\n"
+        f"📦 **အော်ဒါနံပါတ်:** `#ORD-{order_id:03d}`\n"
+        f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
+        f"💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်\n\n"
+        f"Admin မှ သင့်ထံသို့ မကြာမီ ဆက်သွယ်ပေးပါမည်။\nကျေးဇူးတင်ပါသည်။"
+    )
+    bot.send_message(message.chat.id, success_text, reply_markup=main_menu(user_id), parse_mode="Markdown")
+
+    # Admin ထံသို့ အသိပေးခြင်း
+    admin_text = (
+        f"🔔 *အော်ဒါအသစ် ရောက်ရှိပါသည်*\n\n"
+        f"📦 **အော်ဒါနံပါတ်:** `#ORD-{order_id:03d}`\n"
+        f"👤 **ဝယ်သူအမည်:** {customer_name} (ID: `{user_id}`)\n"
+        f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
+        f"💰 **ဈေးနှုန်း:** `{price:,.0f}` ကျပ်\n"
+        f"📍 **ဆက်သွယ်ရန်:**\n{contact_info}"
+    )
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("✅ အော်ဒါလက်ခံမည်", callback_data=f"adm_accept_{order_id}_{user_id}"),
+        types.InlineKeyboardButton("❌ ငြင်းပယ်မည် (Cancel)", callback_data=f"adm_reject_{order_id}_{user_id}_{n_id}")
+    )
+    try:
+        bot.send_message(ADMIN_ID, admin_text, reply_markup=markup, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Failed to send order to admin: {e}")
+
+# 📞 ဆိုင်နှင့်ဆက်သွယ်ရန်
+@bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
+def contact_admin(message):
+    text = (
+        "📞 *ဆိုင်နှင့် ဆက်သွယ်ရန်*\n\n"
+        "🔹 **Telegram Account:** @AdminUsername\n"
+        "🔹 **ဖုန်းနံပါတ်:** `09795096484`, `09792654163`\n"
+        "🔹 **Channel:** @starmobile63956\n\n"
+        "မရှင်းလင်းသည်များရှိပါက အချိန်မရွေး ဆက်သွယ်မေးမြန်းနိုင်ပါသည်။"
+    )
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+
+# ==========================================
+# 👑 ADMIN PANEL & FUNCTIONS
+# ==========================================
+
+@bot.message_handler(func=lambda m: m.text == "👑 Admin Panel" and m.from_user.id == ADMIN_ID)
+def admin_panel(message):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("➕ နံပါတ်အသစ်ထည့်မည် (Manual)", callback_data="admin_add_manual"),
+        types.InlineKeyboardButton("📤 CSV ဖြင့် ထည့်မည်", callback_data="admin_add_csv")
+    )
+    markup.add(
+        types.InlineKeyboardButton("📋 အော်ဒါမှတ်တမ်းများကြည့်မည်", callback_data="admin_view_orders")
+    )
+    bot.send_message(message.chat.id, "👑 *Admin Control Panel*\nလုပ်ဆောင်လိုသည့် အရာကို ရွေးချယ်ပါ -", reply_markup=markup, parse_mode="Markdown")
+
+# Admin Order Actions (Accept / Reject)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("adm_"))
+def admin_order_actions(call):
+    if call.from_user.id != ADMIN_ID:
+        return
+
+    data = call.data.split("_")
+    action = data[1]
+    order_id = int(data[2])
+    user_id = int(data[3])
+
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        
+        if action == "accept":
+            cursor.execute("UPDATE orders SET status='COMPLETED' WHERE id=?", (order_id,))
+            conn.commit()
+            bot.edit_message_text(f"{call.message.text}\n\n✅ *အော်ဒါကို အတည်ပြုပြီးပါပြီ။*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            try:
+                bot.send_message(user_id, f"✅ သင့်၏ အော်ဒါ `#ORD-{order_id:03d}` အား ဆိုင်မှ အတည်ပြုပြီးဖြစ်ပါသည်။ ပစ္စည်းပို့ဆောင်ရန် ပြင်ဆင်နေပါပြီ။", parse_mode="Markdown")
+            except Exception:
+                pass
+
+        elif action == "reject":
+            n_id = int(data[4])
+            cursor.execute("UPDATE orders SET status='REJECTED' WHERE id=?", (order_id,))
+            cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (n_id,))
+            conn.commit()
+            bot.edit_message_text(f"{call.message.text}\n\n❌ *အော်ဒါကို ငြင်းပယ်လိုက်ပါပြီ (နံပါတ်ကို ပြန်ဖွင့်ပေးလိုက်ပါပြီ)။*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            try:
+                bot.send_message(user_id, f"❌ သင့်၏ အော်ဒါ `#ORD-{order_id:03d}` အား ဆိုင်မှ ငြင်းပယ်လိုက်ပါသည်။ လိုအပ်ပါက Admin ထံသို့ ဆက်သွယ်ပေးပါ။", parse_mode="Markdown")
+            except Exception:
+                pass
+
+# Admin CSV Upload (ဖုန်းနံပါတ်များကို CSV ဖြင့် အစုလိုက် ထည့်ရန်)
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_csv")
+def request_csv(call):
+    text = (
+        "📤 *CSV ဖိုင်တင်ပေးပါ*\n\n"
+        "Format အနေဖြင့် အောက်ပါ Column ၃ ခု ပါဝင်ရပါမည်။\n"
+        "`phone_number, price, num_type`\n"
+        "*(num_type နေရာတွင် PRO သို့မဟုတ် LUCKY ဟု ရေးပါ)*"
+    )
+    msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_csv_upload)
+
+def process_csv_upload(message):
+    if not message.document:
+        bot.send_message(message.chat.id, "❌ မှားယွင်းနေပါသည်။ CSV ဖိုင်ကိုသာ တင်ပေးပါ။")
+        return
+
+    if not message.document.file_name.endswith('.csv'):
+        bot.send_message(message.chat.id, "❌ ဖိုင်အမျိုးအစား မှားယွင်းနေပါသည်။ .csv ဖိုင်သာ လက်ခံပါသည်။")
+        return
+
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        csv_data = downloaded_file.decode('utf-8')
+        reader = csv.reader(io.StringIO(csv_data))
+        
+        count = 0
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            next(reader, None) # Header ကို ကျော်ရန်
+            for row in reader:
+                if len(row) >= 3:
+                    phone = row[0].strip()
+                    price = float(row[1].strip())
+                    n_type = row[2].strip().upper()
+                    op = detect_operator(phone)
+                    
+                    cursor.execute(
+                        "INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)",
+                        (phone, op, price, n_type)
+                    )
+                    count += 1
+            conn.commit()
+        
+        bot.send_message(message.chat.id, f"✅ ဖုန်းနံပါတ်အသစ် ({count}) ခုကို Database သို့ အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Error ဖြစ်ပေါ်နေပါသည်: {e}")
+
+# Admin Add Manual
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_manual")
+def request_manual_number(call):
+    text = (
+        "✍️ ထည့်သွင်းလိုသော နံပါတ်, ဈေးနှုန်း, အမျိုးအစား (PRO/LUCKY) ကို ကော်မာ (,) ခြား၍ ရိုက်ထည့်ပါ။\n\n"
+        "*(အောက်ပါ ဥပမာကို နှိပ်ပြီး Copy ကူးနိုင်ပါသည်)*\n"
+        "`09 795 096 484, 50000, PRO`"
+    )
+    msg = bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
+    bot.register_next_step_handler(msg, process_manual_add)
+
+def process_manual_add(message):
+    try:
+        parts = message.text.split(',')
+        if len(parts) != 3:
+            bot.send_message(
+                message.chat.id, 
+                "❌ ပုံစံမှားယွင်းနေပါသည်။ ထပ်မံကြိုးစားကြည့်ပါ။\n\n"
+                "*(အောက်ပါ ဥပမာကို နှိပ်ပြီး Copy ကူးနိုင်ပါသည်)*\n"
+                "`09 795 096 484, 50000, PRO`", 
+                parse_mode="Markdown"
+            )
+            return
+            
+        # Admin ရိုက်ထည့်သည့်အတိုင်း Space/Dash များကို မဖျက်ဘဲ တိုက်ရိုက်ယူမည်
+        phone = parts[0].strip()
+        
+        if not phone:
+            bot.send_message(message.chat.id, "❌ ဖုန်းနံပါတ် အလွတ်ဖြစ်နေပါသည်။")
+            return
+            
+        price = float(parts[1].strip())
+        n_type = parts[2].strip().upper()
+        
+        # detect_operator function သည် ဂဏန်းများကိုသာ စစ်ထုတ်တွက်ချက်ပေးသဖြင့် ပြဿနာမရှိပါ
+        op = detect_operator(phone) 
+        
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)",
+                (phone, op, price, n_type)
+            )
+            conn.commit()
+            
+        bot.send_message(message.chat.id, f"✅ `{phone}` အား အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။", parse_mode="Markdown")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Error: {e}")
+
+
+# ----------------------------------------------------
+# 🚀 Start Polling
+# ----------------------------------------------------
+if __name__ == "__main__":
+    logging.info("Bot is running...")
+    while True:
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            logging.error(f"Polling error: {e}")
+            time.sleep(15)
