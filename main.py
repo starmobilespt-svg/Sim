@@ -1,11 +1,9 @@
+import os
 import sqlite3
 import telebot
 from telebot import types
-import csv
-import io
 import math
-import logging 
-import os
+import logging
 import threading
 from flask import Flask
 
@@ -33,6 +31,8 @@ def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
+threading.Thread(target=run_web_server, daemon=True).start()
+
 # ----------------------------------------------------
 # Database စနစ်
 # ----------------------------------------------------
@@ -53,7 +53,7 @@ def init_db():
             )
         ''')
         
-        # Digital အကောင့်များ Table
+        # Digital အကောင့်များ Table (Auto-delivery အတွက် details ကို အကောင့်အချက်အလက်အဖြစ် သုံးမည်)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,22 +107,6 @@ def get_setting(key, default=""):
         row = cursor.fetchone()
         return row[0] if row else default
 
-def set_setting(key, value):
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
-        conn.commit()
-
-def detect_operator(phone):
-    p = ''.join(filter(str.isdigit, phone))
-    if p.startswith('959'): p = '0' + p[2:]
-    elif not p.startswith('0'): p = '09' + p
-    if p.startswith(('0975', '0976', '0977', '0978', '0979')): return 'ATOM'
-    elif p.startswith(('099', '0995', '0996', '0997', '0998', '0999')): return 'Ooredoo'
-    elif p.startswith(('096', '0966', '0967', '0968', '0969', '0965', '0964')): return 'Mytel'
-    elif p.startswith(('092', '094', '095', '098', '091')): return 'MPT'
-    else: return 'Other'
-
 def check_user_channel(user_id):
     if user_id == ADMIN_ID: return True
     try:
@@ -136,7 +120,8 @@ def main_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add(types.KeyboardButton("✨ နံပါတ်လှများ"), types.KeyboardButton("🍀 Lucky Phone"))
     markup.add(types.KeyboardButton("📡 Operator အလိုက်"), types.KeyboardButton("🛒 Digital အကောင့်များ"))
-    markup.add(types.KeyboardButton("📜 မိမိအော်ဒါများ"), types.KeyboardButton("📞 ဆိုင်နှင့် ဆက်သွယ်ရန်"))
+    markup.add(types.KeyboardButton("🔍 နံပါတ်ရှာမည်"), types.KeyboardButton("📜 မိမိအော်ဒါများ"))
+    markup.add(types.KeyboardButton("📞 ဆိုင်နှင့် ဆက်သွယ်ရန်"))
     if user_id == ADMIN_ID: markup.add(types.KeyboardButton("👑 Admin Panel"))
     return markup
 
@@ -178,7 +163,7 @@ def require_channel_join(func):
     return wrapper
 
 # ----------------------------------------------------
-# 1. ဖုန်းနံပါတ်လှများ အပိုင်း (With Pagination)
+# 1. နံပါတ်လှများ & Lucky Phone (Pagination)
 # ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "✨ နံပါတ်လှများ")
 @require_channel_join
@@ -211,7 +196,6 @@ def show_numbers_by_type(message_or_call, n_type, page=1, is_edit=False):
     for r in rows:
         markup.add(types.InlineKeyboardButton(f"📱 {r[1]} ({r[2]}) - {r[3]:,.0f} ကျပ်", callback_data=f"buy_num_{r[0]}"))
 
-    # Pagination ခလုတ်များ
     nav_buttons = []
     if page > 1:
         nav_buttons.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data=f"pnum_{n_type}_{page-1}"))
@@ -233,11 +217,11 @@ def show_numbers_by_type(message_or_call, n_type, page=1, is_edit=False):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("pnum_"))
 def paginate_numbers(call):
     parts = call.data.split("_")
-    n_type = parts[1]
-    page = int(parts[2])
-    show_numbers_by_type(call, n_type, page=page, is_edit=True)
+    show_numbers_by_type(call, parts[1], page=int(parts[2]), is_edit=True)
 
-# Operator အလိုက် Filter ပြုလုပ်ခြင်း
+# ----------------------------------------------------
+# 2. Operator အလိုက် Filter ပြုလုပ်ခြင်း
+# ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "📡 Operator အလိုက်")
 @require_channel_join
 def show_operators(message):
@@ -285,7 +269,36 @@ def filter_by_operator(call):
     bot.edit_message_text(f"📡 *{op_name}* ရရှိနိုင်သော နံပါတ်များ - *(စာမျက်နှာ {page}/{total_pages})*", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
 # ----------------------------------------------------
-# 2. Digital အကောင့်များ အပိုင်း (With Pagination)
+# 3. 🔍 နံပါတ်ရှာဖွေခြင်း (Search Feature)
+# ----------------------------------------------------
+@bot.message_handler(func=lambda m: m.text == "🔍 နံပါတ်ရှာမည်")
+@require_channel_join
+def search_number_start(message):
+    msg = bot.send_message(message.chat.id, "🔎 ရှာလိုသော ဂဏန်း (သို့မဟုတ်) ဖုန်းနံပါတ်အစိတ်အပိုင်းကို ရိုက်ထည့်ပါ (ဥပမာ - 777 သို့မဟုတ် 097):")
+    bot.register_next_step_handler(msg, process_number_search)
+
+def process_number_search(message):
+    if not check_user_channel(message.from_user.id): return
+    keyword = message.text.strip()
+    
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, phone_number, operator, price, num_type FROM numbers WHERE phone_number LIKE ? AND status='AVAILABLE' LIMIT 10", (f"%{keyword}%",))
+        rows = cursor.fetchall()
+
+    if not rows:
+        bot.send_message(message.chat.id, f"📭 `{keyword}` ပါဝင်သော နံပါတ်များ မတွေ့ရှိပါ။", reply_markup=main_menu(message.from_user.id), parse_mode="Markdown")
+        return
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for r in rows:
+        tag = "✨" if r[4] == "PRO" else "🍀"
+        markup.add(types.InlineKeyboardButton(f"[{tag}] {r[1]} ({r[2]}) - {r[3]:,.0f} ကျပ်", callback_data=f"buy_num_{r[0]}"))
+
+    bot.send_message(message.chat.id, f"🔎 `{keyword}` ရှာဖွေတွေ့ရှိမှု ရလဒ်များ -", reply_markup=markup, parse_mode="Markdown")
+
+# ----------------------------------------------------
+# 4. Digital အကောင့်များ (With Pagination & Auto-Delivery)
 # ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "🛒 Digital အကောင့်များ")
 @require_channel_join
@@ -346,7 +359,7 @@ def ignore_callback(call):
     bot.answer_callback_query(call.id)
 
 # ----------------------------------------------------
-# 3. ဝယ်ယူမှု အော်ဒါ တင်ခြင်းများ
+# 5. ဝယ်ယူမှု အော်ဒါ တင်ခြင်း
 # ----------------------------------------------------
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_num_"))
 def process_buy_num(call):
@@ -354,27 +367,27 @@ def process_buy_num(call):
     n_id = call.data.split("_")[2]
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT phone_number, price, status, num_type FROM numbers WHERE id=?", (n_id,))
+        cursor.execute("SELECT phone_number, price, status FROM numbers WHERE id=?", (n_id,))
         item = cursor.fetchone()
     
     if not item or item[2] == 'SOLD':
         bot.answer_callback_query(call.id, "ဤနံပါတ် ဝယ်ယူပြီးဖြစ်ပါသည် (သို့) မရှိတော့ပါ။", show_alert=True)
         return
 
-    phone, price, _, num_type = item
+    phone, price, _ = item
     deli = get_setting('deli_fee', '4000')
     kpay = get_setting('kpay_no', '')
     wave = get_setting('wave_no', '')
 
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှု ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_step"))
+    markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှု ဖျက်သိမ်းမည်", callback_data="cancel_step"))
 
     msg = bot.send_message(
         call.message.chat.id,
         f"🎯 နံပါတ် - *{phone}*\n💰 ဈေးနှုန်း - `{price:,.0f}` ကျပ်\n\n"
-        f"📦 အိမ်ရောက်ငွေချေ (COD) ဖြင့် ပို့မည်ဖြစ်ပြီး Deli ခ **`{deli}`** ကျပ်ကို အရင်လွှဲရပါမည်။\n\n"
+        f"📦 Deli ခ **`{deli}`** ကျပ်ကို အရင်လွှဲရပါမည်။\n\n"
         f"🔹 *KPay:* `{kpay}`\n🔹 *WavePay:* `{wave}`\n\n"
-        f"📝 ငွေလွှဲပြေစာ ဓာတ်ပုံ သို့မဟုတ် **နာမည်၊ ဖုန်း၊ လိပ်စာ** အတိအကျ ရိုက်ပို့ပေးပါ -",
+        f"📝 ငွေလွှဲပြေစာ ပုံ သို့မဟုတ် **နာမည်၊ ဖုန်း၊ လိပ်စာ** အတိအကျ ပို့ပေးပါ -",
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -386,27 +399,25 @@ def process_buy_acc(call):
     acc_id = call.data.split("_")[2]
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT title, price, details, status, category FROM accounts WHERE id=?", (acc_id,))
+        cursor.execute("SELECT title, price, status, category FROM accounts WHERE id=?", (acc_id,))
         item = cursor.fetchone()
     
-    if not item or item[3] == 'SOLD':
+    if not item or item[2] == 'SOLD':
         bot.answer_callback_query(call.id, "ဤအကောင့် ဝယ်ယူပြီးဖြစ်ပါသည် (သို့) မရှိတော့ပါ။", show_alert=True)
         return
 
-    title, price, details, _, category = item
+    title, price, _, category = item
     kpay = get_setting('kpay_no', '')
     wave = get_setting('wave_no', '')
 
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှု ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_step"))
-
-    details_text = f"\nℹ️ အသေးစိတ် - _{details}_\n" if details else ""
+    markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှု ဖျက်သိမ်းမည်", callback_data="cancel_step"))
 
     msg = bot.send_message(
         call.message.chat.id,
-        f"🎯 အကောင့် - *{title}* ({category})\n💰 ဈေးနှုန်း - `{price:,.0f}` ကျပ်\n{details_text}\n"
+        f"🎯 အကောင့် - *{title}* ({category})\n💰 ဈေးနှုန်း - `{price:,.0f}` ကျပ်\n\n"
         f"🔹 *KPay:* `{kpay}`\n🔹 *WavePay:* `{wave}`\n\n"
-        f"📝 ငွေလွှဲပြီးပါက ငွေလွှဲပြေစာ ဓာတ်ပုံ သို့မဟုတ် **နာမည်၊ Telegram Username** ရိုက်ပို့ပေးပါ -",
+        f"📝 ငွေလွှဲပြီးပါက ငွေလွှဲပြေစာ ပုံ သို့မဟုတ် **နာမည်၊ Telegram Username** ပို့ပေးပါ -",
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -421,7 +432,7 @@ def user_cancel_step(call):
 def save_order(message, item_type, title, price, ref_id):
     if not check_user_channel(message.from_user.id): return
     
-    menu_buttons = ["✨ နံပါတ်လှများ", "🍀 Lucky Phone", "📡 Operator အလိုက်", "🛒 Digital အကောင့်များ", "📜 မိမိအော်ဒါများ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel", "/start"]
+    menu_buttons = ["✨ နံပါတ်လှများ", "🍀 Lucky Phone", "📡 Operator အလိုက်", "🛒 Digital အကောင့်များ", "🔍 နံပါတ်ရှာမည်", "📜 မိမိအော်ဒါများ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel", "/start"]
     if message.text in menu_buttons:
         bot.send_message(message.chat.id, "⚠️ ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(message.from_user.id))
         return
@@ -440,17 +451,4 @@ def save_order(message, item_type, title, price, ref_id):
 
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO orders (user_id, customer_name, item_type, chosen_item, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')",
-                       (uid, user_name, item_type, title, price, info_text, ref_id))
-        oid = cursor.lastrowid
-        
-        if item_type == 'PHONE':
-            cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (ref_id,))
-        else:
-            cursor.execute("UPDATE accounts SET status='SOLD' WHERE id=?", (ref_id,))
-        conn.commit()
-
-    bot.send_message(message.chat.id, f"🎉 *အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။*\n\n🛒 မှာယူသည့်ပစ္စည်း: `{title}`\n📍 အချက်အလက်: {info_text}\n\nAdmin မှ စစ်ဆေးပြီး အမြန်ဆုံး ဆက်သွယ်ပေးပါမည်။", reply_markup=main_menu(uid), parse_mode="Markdown")
-    
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    user_link = f"https://t.me/{username}" if usern
+        cursor.execute("INSERT INTO orders (user_id, customer_name, item_type, chosen_item, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?,
