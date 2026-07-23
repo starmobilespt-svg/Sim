@@ -19,7 +19,7 @@ ITEMS_PER_PAGE = 5
 bot = telebot.TeleBot(TOKEN)
 
 # ----------------------------------------------------
-# Render မပိတ်သွားစေရန် Flask Web Server (Fixed)
+# Render Port ကို အပြည့်အစုံ ကိုက်ညီအောင် ချိန်ညှိထားသော Flask Web Server
 # ----------------------------------------------------
 app = Flask(__name__)
 
@@ -28,8 +28,8 @@ def home():
     return "VIP Shop Bot is running 24/7 on Render!"
 
 def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    # debug=False နှင့် use_reloader=False ထည့်သွင်းခြင်းဖြင့် Render တွင် Application exited early မဖြစ်အောင် တားဆီးပေးသည်
+    # Render မှပေးသော PORT ကို တိုက်ရိုက်ယူသုံးရန် (မရှိပါက 10000 ကို ברירתအဖြစ်သုံးသည်)
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 server_thread = threading.Thread(target=run_web_server)
@@ -455,4 +455,4 @@ def save_order(message, item_type, title, price, ref_id):
 
     uid = message.from_user.id
     user_name = message.from_user.first_name
-    userna
+    username = mess
