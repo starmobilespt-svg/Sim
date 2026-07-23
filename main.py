@@ -113,7 +113,6 @@ def check_user_channel(user_id):
         pass
     return False
 
-# ဖုန်းနံပါတ်မှ Operator အလိုအလျောက် ခွဲခြားပေးသည့် Function
 def detect_operator(phone):
     p = ''.join(filter(str.isdigit, phone))
     if p.startswith('959'): p = '0' + p[2:]
@@ -297,9 +296,6 @@ def process_number_search(message):
 
     bot.send_message(message.chat.id, f"🔎 `{keyword}` ရှာဖွေတွေ့ရှိမှု ရလဒ်များ -", reply_markup=markup, parse_mode="Markdown")
 
-# ----------------------------------------------------
-# Digital အကောင့်များ (ဈေးနှုန်းပြသပြီး Admin ထံ ဆက်သွယ်ဝယ်ယူရန်)
-# ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "🛒 Digital အကောင့်များ")
 @require_channel_join
 def show_acc_categories(message):
@@ -414,12 +410,12 @@ def process_buy_acc(call):
     )
 
     bot.edit_message_text(
-        call.message.chat.id,
         f"🛒 *Digital Account ဝယ်ယူရန်*\n\n"
         f"🎯 အကောင့်အမျိုးအစား: *{title}* ({category})\n"
         f"💰 ကျသင့်ငွေ: `{price:,.0f}` ကျပ်\n\n"
         f"🔹 *KPay:* `{kpay}`\n🔹 *WavePay:* `{wave}`\n\n"
         f"📌 ငွေလွှဲပြီးပါက အောက်ပါခလုတ်ကိုနှိပ်၍ Admin ဆီသို့ ငွေလွှဲပြေစာနှင့်တကွ တိုက်ရိုက်ဆက်သွယ်ဝယ်ယူနိုင်ပါသည် -",
+        call.message.chat.id,
         call.message.message_id,
         reply_markup=markup,
         parse_mode="Markdown"
@@ -455,4 +451,11 @@ def save_order(message, item_type, title, price, ref_id):
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO orders (user_id, customer_name, item_type, chosen_item, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')",
-            (uid, us
+            (uid, user_name, item_type, title, price, info_text, ref_id)
+        )
+        oid = cursor.lastrowid
+        
+        if item_type == 'PHONE':
+            cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (ref_id,))
+        else:
+  
