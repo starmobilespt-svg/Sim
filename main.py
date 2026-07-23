@@ -178,7 +178,6 @@ def show_lucky_numbers(message):
 def show_numbers_by_type(message, n_type, title_text):
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        # GROUP BY phone_number ဖြင့် နံပါတ်တူရင် 1 ခုတည်းပြပြီး MAX(price) ဖြင့် ဈေးအများဆုံးကို ယူမည်
         cursor.execute("""
             SELECT MIN(id), phone_number, operator, MAX(price) 
             FROM numbers 
@@ -346,6 +345,7 @@ def save_order(message, phone, price, n_id):
         order_id = cursor.lastrowid
         conn.commit()
 
+    # ဝယ်သူဆီသို့ အော်ဒါတင်ခြင်း အောင်မြင်ကြောင်း စာပို့ခြင်း
     res_text = (
         f"🎉 *အော်ဒါတင်ယူခြင်း အောင်မြင်ပါသည်။*\n\n"
         f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
@@ -494,52 +494,4 @@ def list_numbers(message):
         tag = "✨ နံပါတ်လှ" if r[4] == "PRO" else "🍀 Lucky"
         status_tag = "🟢 ရောင်းရန်" if r[5] == 'AVAILABLE' else "🔴 ရောင်းပြီး"
         text += f"ID: `{r[0]}` | [{tag}] | {status_tag} | 📡 {r[2]} | 📱 {r[1]} | 💰 {r[3]:,.0f}\n"
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['del_num'])
-def delete_number(message):
-    if message.from_user.id != ADMIN_ID: return
-    try:
-        n_id = message.text.split()[1]
-        with sqlite3.connect('vip_shop.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM numbers WHERE id=?", (n_id,))
-            conn.commit()
-        bot.send_message(message.chat.id, f"✅ ID: {n_id} ကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။")
-    except Exception:
-        bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။\nဥပမာ: `/del_num 3`")
-
-@bot.message_handler(commands=['orders'])
-def export_orders(message):
-    if message.from_user.id != ADMIN_ID: return
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT date, customer_name, chosen_number, price, contact_info FROM orders ORDER BY date DESC")
-        rows = cursor.fetchall()
-
-    if not rows:
-        bot.send_message(message.chat.id, "📭 အော်ဒါမှတ်တမ်း မရှိသေးပါ။")
-        return
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Date", "Customer Name", "Phone Number", "Price", "Contact Info"])
-    for r in rows:
-        writer.writerow(r)
-    
-    bio = io.BytesIO(output.getvalue().encode('utf-8-sig'))
-    bio.name = 'VIP_Orders_List.csv'
-    bot.send_document(message.chat.id, bio, caption="📊 ဝယ်သူအော်ဒါမှတ်တမ်း Excel (.csv) ဖိုင် ရပါပြီ။")
-
-# 📞 ဆိုင်အချက်အလက်
-@bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
-@require_channel_join
-def show_contact(message):
-    text = (
-        "📞 ဖုန်း: `09 792 654 163`\n"
-        "💬 Telegram: @orange310199"
-    )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-print("VIP Phone Numbers Bot is running successfully...")
-bot.infinity_polling()
+    bot.send_mes
