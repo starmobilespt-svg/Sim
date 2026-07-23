@@ -178,12 +178,7 @@ def show_lucky_numbers(message):
 def show_numbers_by_type(message, n_type, title_text):
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT MIN(id), phone_number, operator, MAX(price) 
-            FROM numbers 
-            WHERE num_type=? AND status='AVAILABLE' 
-            GROUP BY phone_number
-        """, (n_type,))
+        cursor.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE'", (n_type,))
         rows = cursor.fetchall()
 
     if not rows:
@@ -220,12 +215,7 @@ def filter_by_operator(call):
     op_name = call.data.split("_")[1]
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT MIN(id), phone_number, MAX(price), num_type 
-            FROM numbers 
-            WHERE operator=? AND status='AVAILABLE' 
-            GROUP BY phone_number
-        """, (op_name,))
+        cursor.execute("SELECT id, phone_number, price, num_type FROM numbers WHERE operator=? AND status='AVAILABLE'", (op_name,))
         rows = cursor.fetchall()
 
     if not rows:
@@ -255,12 +245,7 @@ def process_search(message):
     keyword = message.text.strip()
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT MIN(id), phone_number, operator, MAX(price), num_type 
-            FROM numbers 
-            WHERE phone_number LIKE ? AND status='AVAILABLE' 
-            GROUP BY phone_number
-        """, (f'%{keyword}%',))
+        cursor.execute("SELECT id, phone_number, operator, price, num_type FROM numbers WHERE phone_number LIKE ? AND status='AVAILABLE'", (f'%{keyword}%',))
         rows = cursor.fetchall()
 
     if not rows:
@@ -337,7 +322,7 @@ def save_order(message, phone, price, n_id):
     
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE numbers SET status='SOLD' WHERE phone_number=?", (phone,))
+        cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
         cursor.execute(
             "INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)",
             (user_id, message.from_user.first_name, phone, price, contact_info, n_id)
@@ -382,12 +367,13 @@ def admin_reject_order(call):
     o_id = call.data.split("_")[1]
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, chosen_number FROM orders WHERE id=?", (o_id,))
+        cursor.execute("SELECT user_id, chosen_number, ref_id FROM orders WHERE id=?", (o_id,))
         order = cursor.fetchone()
         
         if order:
-            uid, phone = order
-            cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE phone_number=?", (phone,))
+            uid, phone, ref_id = order
+            if ref_id:
+                cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
             cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
             conn.commit()
             
@@ -496,4 +482,10 @@ def list_numbers(message):
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['del_num'])
-def delet
+def delete_number(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        n_id = message.text.split()[1]
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM numbers WHERE id=?", (n_i
