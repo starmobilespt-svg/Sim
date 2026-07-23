@@ -4,7 +4,8 @@ import telebot
 from telebot import types
 import math
 import logging
-from flask import Flask, request
+import threading
+from flask import Flask
 
 # Logging စနစ်
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -15,14 +16,23 @@ CHANNEL_USERNAME = "@starmobile63956"
 ITEMS_PER_PAGE = 5
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 
 # ----------------------------------------------------
-# Render Health Check အတွက် Flask Route
+# Render မပိတ်သွားစေရန် Flask Web Server (Ping စနစ်)
 # ----------------------------------------------------
+app = Flask(__name__)
+
 @app.route('/')
 def home():
-    return "VIP Shop Bot is active and running!"
+    return "VIP Shop Bot is running 24/7 successfully!"
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+server_thread = threading.Thread(target=run_web_server)
+server_thread.daemon = True
+server_thread.start()
 
 # ----------------------------------------------------
 # Database စနစ်
@@ -31,6 +41,7 @@ def init_db():
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS numbers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,6 +52,7 @@ def init_db():
                 status TEXT DEFAULT 'AVAILABLE'
             )
         ''')
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +63,7 @@ def init_db():
                 status TEXT DEFAULT 'AVAILABLE'
             )
         ''')
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +78,7 @@ def init_db():
                 date TIMESTAMP DEFAULT (datetime('now', 'localtime'))
             )
         ''')
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -438,12 +452,4 @@ def save_order(message, item_type, title, price, ref_id):
     photo_file_id = None
     info_text = message.text or "ငွေလွှဲပြေစာ ဓာတ်ပုံ ပေးပို့ထားပါသည်"
 
-    if message.photo:
-        photo_file_id = message.photo[-1].file_id
-        if message.caption:
-            info_text = f"📷 Photo + Caption: {message.caption}"
-
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO orders (user_id, cu
+ 
