@@ -328,6 +328,7 @@ def save_order(message, phone, price, n_id):
         order_id = cursor.lastrowid
         conn.commit()
 
+    # ဝယ်သူဆီသို့ အော်ဒါအောင်မြင်ကြောင်း စာပို့ခြင်း
     res_text = (
         f"🎉 *အော်ဒါတင်ယူခြင်း အောင်မြင်ပါသည်။*\n\n"
         f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
@@ -486,6 +487,4 @@ def delete_number(message):
         n_id = message.text.split()[1]
         with sqlite3.connect('vip_shop.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM numbers WHERE id=?", (n_id,))
-            conn.commit()
-       
+            cursor.execute("DELETE FROM numbers WH
