@@ -278,7 +278,6 @@ def process_buy(call):
 
     phone, price, _ = item
     
-    # ဝယ်သူဆီ အော်ဒါဖျက်ရန် ခလုတ်ပါဝင်ခြင်း
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
@@ -335,7 +334,7 @@ def save_order(message, phone, price, n_id):
         f"💰 **ဖုန်းတန်ဖိုး:** `{price:,.0f}` ကျပ် (အိမ်ရောက်ငွေချေ)\n"
         f"🚚 **Deli ခ:** `4,000` ကျပ် (ကြိုလွှဲပြီး)\n"
         f"📍 **ပေးပို့ရမည့် အချက်အလက်:**\n{contact_info}\n\n"
-        f"ငွေလွှဲ Screenshot နှင့်အတူ Admin [@orange310199] ထံ ဆက်သွယ်ပေးပါခင်ဗျာ။"
+        f"ငွေလွှဲ Screenshot နှင့်အတူ Admin ထံ ဆက်သွယ်ပေးပါခင်ဗျာ။"
     )
     bot.send_message(message.chat.id, res_text, reply_markup=main_menu(user_id), parse_mode="Markdown")
 
@@ -487,4 +486,6 @@ def delete_number(message):
         n_id = message.text.split()[1]
         with sqlite3.connect('vip_shop.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM num
+            cursor.execute("DELETE FROM numbers WHERE id=?", (n_id,))
+            conn.commit()
+       
