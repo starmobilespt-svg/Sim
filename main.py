@@ -163,7 +163,7 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# ✨ နံပါတ်လှများ ပြသခြင်း (နံပါတ်တူရင် 1ခုပဲပြ၊ ဈေးများတာကို ယူမည်)
+# ✨ နံပါတ်လှများ ပြသခြင်း
 @bot.message_handler(func=lambda m: m.text == "✨ နံပါတ်လှများကြည့်မည်")
 @require_channel_join
 def show_pro_numbers(message):
@@ -345,7 +345,6 @@ def save_order(message, phone, price, n_id):
         order_id = cursor.lastrowid
         conn.commit()
 
-    # ဝယ်သူဆီသို့ အော်ဒါတင်ခြင်း အောင်မြင်ကြောင်း စာပို့ခြင်း
     res_text = (
         f"🎉 *အော်ဒါတင်ယူခြင်း အောင်မြင်ပါသည်။*\n\n"
         f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
@@ -494,4 +493,7 @@ def list_numbers(message):
         tag = "✨ နံပါတ်လှ" if r[4] == "PRO" else "🍀 Lucky"
         status_tag = "🟢 ရောင်းရန်" if r[5] == 'AVAILABLE' else "🔴 ရောင်းပြီး"
         text += f"ID: `{r[0]}` | [{tag}] | {status_tag} | 📡 {r[2]} | 📱 {r[1]} | 💰 {r[3]:,.0f}\n"
-    bot.send_mes
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['del_num'])
+def delet
