@@ -356,9 +356,8 @@ def process_buy(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
-    # Error အကင်းဆုံးဖြစ်စေရန် String ကို Line တစ်ကြောင်းတည်းဖြင့် \n အသုံးပြုရေးသားထားပါသည်
     text_msg = f"🎯 သင်ရွေးချယ်ထားသော နံပါတ် - *{phone}*\n💰 ကျသင့်ငွေ (ဖုန်းဘိုး) - `{price:,.0f}` ကျပ်\n\n📦 *အိမ်ရောက်ငွေချေ (COD) ဖြင့် ပို့ဆောင်ပေးမည်ဖြစ်ပါသည်။*\nသို့သော် Deli ခ **`4,000`** ကျပ်ကို အရင်ကြိုတင်လွှဲပေးရပါမည်။\n\n💳 **Deli ခ 4,000 လွှဲရန် အကောင့်များ:**\n🔹 *KPay:* `09795096484` (Si Thu Aung)\n🔹 *WavePay:* `09792654163` (Si Thu Aung)\n\n📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတွက် သင်၏ နာမည်၊ ဖုန်းနံပါတ် နှင့် လိပ်စာအတိအကျ ကို အောက်ပါပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ -\n\n*(ဥပမာ - မောင်မောင်၊ 09792654163၊ အမှတ်(၁၂)၊ ဗိုလ်ချုပ်လမ်း၊ ရန်ကုန်)*"
-
+    
     msg = bot.send_message(call.message.chat.id, text_msg, reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(msg, save_order, phone, price, n_id)
 
@@ -390,4 +389,6 @@ def save_order(message, phone, price, n_id):
         cursor.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (user_id, customer_name, phone, price, contact_info, n_id))
         order_id = cursor.lastrowid
         cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
-    
+        conn.commit()
+
+    success_text = f"✅ *အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။*\n\n📦 **အေ
