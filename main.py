@@ -41,7 +41,6 @@ def init_db():
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
         
-        # ဖုန်းနံပါတ်လှများ Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS numbers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +52,6 @@ def init_db():
             )
         ''')
         
-        # Digital အကောင့်များ Table (Auto-delivery အတွက် details ကို အကောင့်အချက်အလက်အဖြစ် သုံးမည်)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +63,6 @@ def init_db():
             )
         ''')
         
-        # အော်ဒါမှတ်တမ်းများ Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,9 +159,6 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# ----------------------------------------------------
-# 1. နံပါတ်လှများ & Lucky Phone (Pagination)
-# ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "✨ နံပါတ်လှများ")
 @require_channel_join
 def show_pro_numbers(message): show_numbers_by_type(message, "PRO", page=1)
@@ -219,9 +213,6 @@ def paginate_numbers(call):
     parts = call.data.split("_")
     show_numbers_by_type(call, parts[1], page=int(parts[2]), is_edit=True)
 
-# ----------------------------------------------------
-# 2. Operator အလိုက် Filter ပြုလုပ်ခြင်း
-# ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "📡 Operator အလိုက်")
 @require_channel_join
 def show_operators(message):
@@ -268,9 +259,6 @@ def filter_by_operator(call):
 
     bot.edit_message_text(f"📡 *{op_name}* ရရှိနိုင်သော နံပါတ်များ - *(စာမျက်နှာ {page}/{total_pages})*", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
-# ----------------------------------------------------
-# 3. 🔍 နံပါတ်ရှာဖွေခြင်း (Search Feature)
-# ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "🔍 နံပါတ်ရှာမည်")
 @require_channel_join
 def search_number_start(message):
@@ -297,9 +285,6 @@ def process_number_search(message):
 
     bot.send_message(message.chat.id, f"🔎 `{keyword}` ရှာဖွေတွေ့ရှိမှု ရလဒ်များ -", reply_markup=markup, parse_mode="Markdown")
 
-# ----------------------------------------------------
-# 4. Digital အကောင့်များ (With Pagination & Auto-Delivery)
-# ----------------------------------------------------
 @bot.message_handler(func=lambda m: m.text == "🛒 Digital အကောင့်များ")
 @require_channel_join
 def show_acc_categories(message):
@@ -358,9 +343,6 @@ def filter_acc_by_category(call):
 def ignore_callback(call):
     bot.answer_callback_query(call.id)
 
-# ----------------------------------------------------
-# 5. ဝယ်ယူမှု အော်ဒါ တင်ခြင်း
-# ----------------------------------------------------
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_num_"))
 def process_buy_num(call):
     if not check_user_channel(call.from_user.id): return
@@ -451,4 +433,25 @@ def save_order(message, item_type, title, price, ref_id):
 
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO orders (user_id, customer_name, item_type, chosen_item, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?,
+        cursor.execute(
+            "INSERT INTO orders (user_id, customer_name, item_type, chosen_item, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')",
+            (uid, user_name, item_type, title, price, info_text, ref_id)
+        )
+        oid = cursor.lastrowid
+        
+        if item_type == 'PHONE':
+            cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (ref_id,))
+        else:
+            cursor.execute("UPDATE accounts SET status='SOLD' WHERE id=?", (ref_id,))
+        conn.commit()
+
+    bot.send_message(message.chat.id, f"🎉 *အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။*\n\n🛒 မှာယူသည့်ပစ္စည်း: `{title}`\n📍 အချက်အလက်: {info_text}\n\nAdmin မှ စစ်ဆေးအတည်ပြုပေးပါမည်။", reply_markup=main_menu(uid), parse_mode="Markdown")
+    
+    user_link = f"@{username}" if username else f"ID: {uid}"
+    admin_text = (
+        f"🚨 *အော်ဒါအသစ် ရောက်ရှိပါပြီ!*\n\n"
+        f"🆔 Order ID: #{oid}\n"
+        f"👤 ဝယ်ယူသူ: {user_name} ({user_link})\n"
+        f"🛍 အမျိုးအစား: {item_type}\n"
+        f"🎯 မှာယူသည့်အရာ: {title}\n"
+        f"💰 ဈေးနှုန်
