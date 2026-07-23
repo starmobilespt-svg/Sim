@@ -4,8 +4,8 @@ import telebot
 from telebot import types
 import math
 import logging
-import threading
 from flask import Flask
+from multiprocessing import Process
 
 # Logging စနစ်
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -19,7 +19,7 @@ ITEMS_PER_PAGE = 5
 bot = telebot.TeleBot(TOKEN)
 
 # ----------------------------------------------------
-# Render Port ကို အပြည့်အစုံ ကိုက်ညီအောင် ချိန်ညှိထားသော Flask Web Server
+# Render အတွက် Flask Web Server (Multiprocessing ဖြင့် ချိတ်ဆက်ခြင်း)
 # ----------------------------------------------------
 app = Flask(__name__)
 
@@ -28,13 +28,8 @@ def home():
     return "VIP Shop Bot is running 24/7 on Render!"
 
 def run_web_server():
-    # Render မှပေးသော PORT ကို တိုက်ရိုက်ယူသုံးရန် (မရှိပါက 10000 ကို ברירתအဖြစ်သုံးသည်)
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-server_thread = threading.Thread(target=run_web_server)
-server_thread.daemon = True
-server_thread.start()
 
 # ----------------------------------------------------
 # Database စနစ်
@@ -455,4 +450,10 @@ def save_order(message, item_type, title, price, ref_id):
 
     uid = message.from_user.id
     user_name = message.from_user.first_name
-    username = mess
+    username = message.from_user.username
+    
+    photo_file_id = None
+    info_text = message.text or "ငွေလွှဲပြေစာ ဓာတ်ပုံ ပေးပို့ထားပါသည်"
+
+    if message.photo:
+        photo_file_id = message.ph
