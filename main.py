@@ -280,7 +280,6 @@ def process_buy(call):
 
     phone, price, _ = item
     
-    # ဝယ်ယူမှုကို ဖျက်သိမ်းရန် Cancel ခလုတ် ထည့်သွင်းခြင်း
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
@@ -300,7 +299,6 @@ def process_buy(call):
     )
     bot.register_next_step_handler(msg, save_order, phone, price, n_id)
 
-# ❌ ဝယ်သူဘက်မှ အော်ဒါဖျက်သိမ်းခြင်း (Cancel)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
 def user_cancel_buy(call):
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
@@ -314,7 +312,6 @@ def save_order(message, phone, price, n_id):
     if not check_user_channel(message.from_user.id):
         return
 
-    # မီနူးခလုတ်များကို နှိပ်လိုက်ပါက အော်ဒါကို ပယ်ဖျက်ရန်
     menu_buttons = ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🔍 နံပါတ်ရှာမည်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel", "/start"]
     if message.text in menu_buttons:
         bot.send_message(message.chat.id, "⚠️ ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(message.from_user.id))
@@ -325,7 +322,6 @@ def save_order(message, phone, price, n_id):
     
     with sqlite3.connect('vip_shop.db') as conn:
         cursor = conn.cursor()
-        # နံပါတ်ကို SOLD ပြောင်းမည်
         cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
         cursor.execute(
             "INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)",
@@ -352,7 +348,6 @@ def save_order(message, phone, price, n_id):
         f"📋 ဝယ်ယူသူ အချက်အလက်:\n{contact_info}"
     )
     
-    # Admin အတွက် ပို့ပြီးကြောင်းနှင့် Reject (Cancel) လုပ်နိုင်သည့် ခလုတ်များ
     admin_markup = types.InlineKeyboardMarkup(row_width=2)
     admin_markup.add(
         types.InlineKeyboardButton("✅ ပို့ပြီး (ဖျက်မည်)", callback_data=f"done_{order_id}"),
@@ -364,7 +359,6 @@ def save_order(message, phone, price, n_id):
     except Exception:
         pass
 
-# ❌ Admin ဘက်မှ အော်ဒါကို ပယ်ဖျက်ခြင်း (Reject / Cancel)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("reject_"))
 def admin_reject_order(call):
     if call.from_user.id != ADMIN_ID:
@@ -378,13 +372,11 @@ def admin_reject_order(call):
         
         if order:
             uid, phone, ref_id = order
-            # နံပါတ်ကို ပြန်လည်ရောင်းချနိုင်ရန် AVAILABLE သို့ ပြောင်းမည်
             if ref_id:
                 cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
             cursor.execute("DELETE FROM orders WHERE id=?", (o_id,))
             conn.commit()
             
-            # ဝယ်ယူသူထံ အကြောင်းကြားစာ ပို့မည်
             try:
                 bot.send_message(uid, f"❌ သင့်ရဲ့ နံပါတ်အော်ဒါ (`{phone}`) မှာ ငွေလွှဲပြေစာ မမှန်ကန်မှု (သို့) အခြားအကြောင်းကြောင့် Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။", parse_mode="Markdown")
             except Exception:
@@ -392,7 +384,7 @@ def admin_reject_order(call):
 
     try:
         bot.edit_message_text(
-            f"{call.message.text}\n\n──────────────\n❌ *Status: အော်ဒါကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ (നံပါတ်ကို ပြန်ဖွင့်ပေးလိုက်ပါပြီ)*",
+            f"{call.message.text}\n\n──────────────\n❌ *Status: အော်ဒါကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ (နံပါတ်ကို ပြန်ဖွင့်ပေးလိုက်ပါပြီ)*",
             call.message.chat.id, 
             call.message.message_id, 
             parse_mode="Markdown"
@@ -486,4 +478,14 @@ def list_numbers(message):
     for r in rows:
         tag = "✨ နံပါတ်လှ" if r[4] == "PRO" else "🍀 Lucky"
         status_tag = "🟢 ရောင်းရန်" if r[5] == 'AVAILABLE' else "🔴 ရောင်းပြီး"
-        text += f"ID: `{r[0]}` |
+        text += f"ID: `{r[0]}` | [{tag}] | {status_tag} | 📡 {r[2]} | 📱 {r[1]} | 💰 {r[3]:,.0f}\n"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['del_num'])
+def delete_number(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        n_id = message.text.split()[1]
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM numbers WHERE id=?", (n_i
