@@ -458,4 +458,184 @@ def save_order(message, item_type, title, price, ref_id):
         if item_type == 'PHONE':
             cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (ref_id,))
         else:
-  
+            cursor.execute("UPDATE accounts SET status='SOLD' WHERE id=?", (ref_id,))
+        conn.commit()
+
+    bot.send_message(message.chat.id, f"🎉 *အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။*\n\n🛒 မှာယူသည့်ပစ္စည်း: `{title}`\n📍 အချက်အလက်: {info_text}\n\nAdmin မှ စစ်ဆေးအတည်ပြုပေးပါမည်။", reply_markup=main_menu(uid), parse_mode="Markdown")
+    
+    user_link = f"@{username}" if username else f"ID: {uid}"
+    admin_text = (
+        f"🚨 *အော်ဒါအသစ် ရောက်ရှိပါပြီ!*\n\n"
+        f"🆔 Order ID: #{oid}\n"
+        f"👤 ဝယ်ယူသူ: {user_name} ({user_link})\n"
+        f"🛍 အမျိုးအစား: {item_type}\n"
+        f"🎯 မှာယူသည့်အရာ: {title}\n"
+        f"💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n"
+        f"📝 အချက်အလက်: {info_text}"
+    )
+    
+    admin_markup = types.InlineKeyboardMarkup(row_width=2)
+    admin_markup.add(
+        types.InlineKeyboardButton("✅ အတည်ပြုမည် (Approve)", callback_data=f"approve_{oid}"),
+        types.InlineKeyboardButton("❌ ပယ်ဖျက်မည် (Reject)", callback_data=f"reject_{oid}")
+    )
+
+    try:
+        if photo_file_id:
+            bot.send_photo(ADMIN_ID, photo_file_id, caption=admin_text, reply_markup=admin_markup, parse_mode="Markdown")
+        else:
+            bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_markup, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Admin ထံ အော်ဒါပို့ရာတွင် အမှား: {e}")
+
+@bot.message_handler(func=lambda m: m.text == "👑 Admin Panel" and m.from_user.id == ADMIN_ID)
+def admin_panel_main(message):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("➕ နံပါတ်အသစ်ထည့်ရန်", callback_data="adm_add_num"),
+        types.InlineKeyboardButton("➕ အကောင့်အသစ်ထည့်ရန်", callback_data="adm_add_acc"),
+        types.InlineKeyboardButton("📢 Broadcast ပို့ရန်", callback_data="adm_broadcast")
+    )
+    bot.send_message(message.chat.id, "👑 *Admin Control Panel သို့ ကြိုဆိုပါသည်။*", reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("adm_") and call.from_user.id == ADMIN_ID)
+def admin_callbacks(call):
+    action = call.data.split("_")[1]
+    if action == "add" and call.data.split("_")[2] == "num":
+        msg = bot.send_message(
+            call.message.chat.id, 
+            "နံပါတ်အသစ် ထည့်ရန် ပုံစံအတိုင်း ရိုက်ပို့ပါ:\n\n"
+            "`နံပါတ်, ဈေးနှုန်း, အမျိုးအစား(PRO/LUCKY)`\n"
+            "ဥပမာ: `09777777777, 50000, PRO`", 
+            parse_mode="Markdown"
+        )
+        bot.register_next_step_handler(msg, save_new_number_admin)
+    elif action == "add" and call.data.split("_")[2] == "acc":
+        msg = bot.send_message(call.message.chat.id, "အကောင့်အသစ် ထည့်ရန် ပုံစံအတိုင်း ရိုက်ပို့ပါ:\n\n`Category, Title, ဈေးနှုန်း, အကောင့်အချက်အလက်(Details)`\nဥပမာ: `Netflix, 1 Month Premium, 5000, email:abc pass:123`", parse_mode="Markdown")
+        bot.register_next_step_handler(msg, save_new_acc_admin)
+    elif action == "broadcast":
+        msg = bot.send_message(call.message.chat.id, "📢 အသုံးပြုသူအားလုံးဆီ ပို့လိုသော ကြေညာချက် စာသားကို ရိုက်ပို့ပါ:")
+        bot.register_next_step_handler(msg, process_broadcast)
+
+def save_new_number_admin(message):
+    try:
+        parts = [p.strip() for p in message.text.split(',')]
+        phone, price, n_type = parts[0], float(parts[1]), parts[2].upper()
+        op = detect_operator(phone)
+        
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, n_type))
+            conn.commit()
+        bot.send_message(message.chat.id, f"✅ နံပါတ်အသစ် ထည့်သွင်းခြင်း အောင်မြင်ပါသည်။ (Detected Operator: {op})")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ အမှားအယွင်းရှိပါသည်: {e}")
+
+def save_new_acc_admin(message):
+    try:
+        parts = [p.strip() for p in message.text.split(',')]
+        cat, title, price, details = parts[0], parts[1], float(parts[2]), parts[3]
+        
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO accounts (category, title, price, details) VALUES (?, ?, ?, ?)", (cat, title, price, details))
+            conn.commit()
+        bot.send_message(message.chat.id, f"✅ အကောင့်အသစ် ထည့်သွင်းခြင်း အောင်မြင်ပါသည်။")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ အမှားအယွင်းရှိပါသည်: {e}")
+
+def process_broadcast(message):
+    text = message.text
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users")
+        users = cursor.fetchall()
+    
+    success = 0
+    for u in users:
+        try:
+            bot.send_message(u[0], f"📢 *ကြေညာချက်*\n\n{text}", parse_mode="Markdown")
+            success += 1
+        except:
+            pass
+    bot.send_message(message.chat.id, f"✅ Broadcast ပို့ခြင်း ပြီးစီးပါပြီ။ အောင်မြင်သူဦးရေ: {success}")
+
+@bot.callback_query_handler(func=lambda call: (call.data.startswith("approve_") or call.data.startswith("reject_")) and call.from_user.id == ADMIN_ID)
+def handle_order_action(call):
+    parts = call.data.split("_")
+    action, oid = parts[0], parts[1]
+    
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, item_type, ref_id, chosen_item FROM orders WHERE id=?", (oid,))
+        order = cursor.fetchone()
+        
+    if not order:
+        bot.answer_callback_query(call.id, "အော်ဒါ မတွေ့ရှိတော့ပါ။", show_alert=True)
+        return
+
+    uid, item_type, ref_id, chosen_item = order
+
+    if action == "approve":
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE orders SET status='APPROVED' WHERE id=?", (oid,))
+            conn.commit()
+            
+        bot.edit_message_caption(f"{call.message.caption}\n\n✅ **Status: APPROVED (အတည်ပြုပြီး)**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+        
+        delivery_extra = ""
+        if item_type == 'ACCOUNT':
+            with sqlite3.connect('vip_shop.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT details FROM accounts WHERE id=?", (ref_id,))
+                acc = cursor.fetchone()
+                if acc and acc[0]:
+                    delivery_extra = f"\n\n🔑 *အကောင့်အချက်အလက် (Auto-Delivery):*\n`{acc[0]}`"
+
+        bot.send_message(uid, f"🎉 သင့်ရဲ့ အော်ဒါ (#{oid}) - *{chosen_item}* ကို Admin မှ အတည်ပြုပေးလိုက်ပါပြီ။{delivery_extra}", parse_mode="Markdown")
+    else:
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE orders SET status='REJECTED' WHERE id=?", (oid,))
+            if item_type == 'PHONE':
+                cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
+            else:
+                cursor.execute("UPDATE accounts SET status='AVAILABLE' WHERE id=?", (ref_id,))
+            conn.commit()
+            
+        bot.edit_message_caption(f"{call.message.caption}\n\n❌ **Status: REJECTED (ပယ်ဖျက်လိုက်သည်)**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+        bot.send_message(uid, f"❌ သင့်ရဲ့ အော်ဒါ (#{oid}) - *{chosen_item}* မှာ ငွေလွှဲပြေစာ မမှန်ကန်မှု (သို့) အခြားအကြောင်းကြောင့် ပယ်ဖျက်ခံလိုက်ရပါသည်။", parse_mode="Markdown")
+
+@bot.message_handler(func=lambda m: m.text == "📜 မိမိအော်ဒါများ")
+@require_channel_join
+def show_my_orders(message):
+    uid = message.from_user.id
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, chosen_item, price, status, date FROM orders WHERE user_id=? ORDER BY id DESC LIMIT 5", (uid,))
+        rows = cursor.fetchall()
+
+    if not rows:
+        bot.send_message(message.chat.id, "📭 လောလောဆယ် မှာယူထားသော အော်ဒါမှတ်တမ်း မရှိသေးပါ။")
+        return
+
+    text = "📜 *သင်၏ နောက်ဆုံး မှာယူထားသော အော်ဒါများ -*\n\n"
+    for r in rows:
+        status_str = "⏳ စစ်ဆေးဆဲ" if r[3] == 'PENDING' else ("✅ ပြီးစီး" if r[3] == 'APPROVED' else "❌ ပယ်ဖျက်ပြီး")
+        text += f"🆔 Order #{r[0]}\n🛍 ပစ္စည်း: {r[1]}\n💰 ဈေးနှုန်း: {r[2]:,.0f} ကျပ်\n📌 အခြေအနေ: {status_str}\n⏱ အချိန်: {r[4]}\n---------------------------\n"
+    
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
+@require_channel_join
+def contact_shop(message):
+    text = (
+        "📞 *ဆိုင်နှင့် ဆက်သွယ်ရန်*\n\n"
+        f"📢 Telegram Channel: {CHANNEL_USERNAME}\n"
+        "👨‍💻 Admin ဆက်သွယ်ရန်: @starmobile63956_admin"
+    )
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+print("VIP Shop Bot is running successfully...")
+bot.infinity_polling()
