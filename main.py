@@ -19,7 +19,7 @@ ITEMS_PER_PAGE = 5
 bot = telebot.TeleBot(TOKEN)
 
 # ----------------------------------------------------
-# Render မပိတ်သွားစေရန် Flask Web Server
+# Render မပိတ်သွားစေရန် Flask Web Server (Fixed)
 # ----------------------------------------------------
 app = Flask(__name__)
 
@@ -29,9 +29,12 @@ def home():
 
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    # debug=False နှင့် use_reloader=False ထည့်သွင်းခြင်းဖြင့် Render တွင် Application exited early မဖြစ်အောင် တားဆီးပေးသည်
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-threading.Thread(target=run_web_server, daemon=True).start()
+server_thread = threading.Thread(target=run_web_server)
+server_thread.daemon = True
+server_thread.start()
 
 # ----------------------------------------------------
 # Database စနစ်
@@ -452,11 +455,4 @@ def save_order(message, item_type, title, price, ref_id):
 
     uid = message.from_user.id
     user_name = message.from_user.first_name
-    username = message.from_user.username
-    
-    photo_file_id = None
-    info_text = message.text or "ငွေလွှဲပြေစာ ဓာတ်ပုံ ပေးပို့ထားပါသည်"
-
-    if message.photo:
-        photo_file_id = message.photo[-1].file_id
-    
+    userna
