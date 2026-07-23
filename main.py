@@ -4,8 +4,6 @@ import telebot
 from telebot import types
 import math
 import logging
-from flask import Flask
-from multiprocessing import Process
 
 # Logging စနစ်
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -17,19 +15,6 @@ CHANNEL_USERNAME = "@starmobile63956"
 ITEMS_PER_PAGE = 5
 
 bot = telebot.TeleBot(TOKEN)
-
-# ----------------------------------------------------
-# Render အတွက် Flask Web Server (Multiprocessing ဖြင့် ချိတ်ဆက်ခြင်း)
-# ----------------------------------------------------
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "VIP Shop Bot is running 24/7 on Render!"
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # ----------------------------------------------------
 # Database စနစ်
@@ -456,4 +441,14 @@ def save_order(message, item_type, title, price, ref_id):
     info_text = message.text or "ငွေလွှဲပြေစာ ဓာတ်ပုံ ပေးပို့ထားပါသည်"
 
     if message.photo:
-        photo_file_id = message.ph
+        photo_file_id = message.photo[-1].file_id
+        if message.caption:
+            info_text = f"📷 Photo + Caption: {message.caption}"
+
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO orders (user_id, customer_name, item_type, chosen_item, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')",
+            (uid, user_name, item_type, title, price, info_text, ref_id)
+        )
+        oid = cursor.lastrowi
