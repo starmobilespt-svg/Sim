@@ -158,6 +158,25 @@ def not_joined_markup():
     )
     return markup
 
+# 🏓 Bot အလုပ်လုပ်/မလုပ် စစ်ဆေးရန် Ping Command
+@bot.message_handler(commands=['ping'])
+def ping_command(message):
+    start_time = time.time()
+    msg = bot.reply_to(message, "Pinging... 📡")
+    end_time = time.time()
+    
+    # ကြာချိန်ကို Milliseconds (ms) ဖြင့် တွက်မည်
+    ping_time = round((end_time - start_time) * 1000) 
+    
+    bot.edit_message_text(
+        f"🏓 *Pong!*\n"
+        f"Bot is active and running smoothly.\n"
+        f"⏱ Latency: `{ping_time}ms`",
+        chat_id=message.chat.id,
+        message_id=msg.message_id,
+        parse_mode="Markdown"
+    )
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -467,230 +486,4 @@ def process_buy(call):
         f"💳 **Deli ခ 4,000 လွှဲရန် အကောင့်များ:**\n"
         f"🔹 *KPay:* `09795096484` (Si Thu Aung)\n"
         f"🔹 *WavePay:* `09792654163` (Si Thu Aung)\n\n"
-        f"📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတွက် သင်၏ **နာမည်၊ ဖုန်းနံပါတ် နှင့် လိပ်စာအတိအကျ** ကို အောက်ပါပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ -\n\n"
-        f"*(ဥပမာ - မောင်မောင်၊ 09792654163၊ အမှတ်(၁၂)၊ ဗိုလ်ချုပ်လမ်း၊ ရန်ကုန်)*",
-        reply_markup=markup,
-        parse_mode="Markdown"
-    )
-    bot.register_next_step_handler(msg, save_order, phone, price, n_id)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
-def user_cancel_buy(call):
-    bot.clear_step_handler_by_chat_id(call.message.chat.id)
-    try:
-        bot.edit_message_text("❌ *ဝယ်ယူမှုကို ဖျက်သိမ်းလိုက်ပါပြီ။*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    except Exception:
-        pass
-    bot.send_message(call.message.chat.id, "အခြား ပစ္စည်းများကို ဆက်လက်ကြည့်ရှုနိုင်ပါသည်။", reply_markup=main_menu(call.from_user.id))
-
-def save_order(message, phone, price, n_id):
-    if not check_user_channel(message.from_user.id):
-        return
-
-    menu_buttons = [
-        "✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", 
-        "🔍 နံပါတ်ရှာမည်", "💰 ဈေးနှုန်းအလိုက် ရှာမည်", "📦 ကျွန်ုပ်၏ အော်ဒါများ", 
-        "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"
-    ]
-
-    if message.text in menu_buttons:
-        bot.send_message(message.chat.id, "ဝယ်ယူမှု စာရင်းသွင်းခြင်းကို ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(message.from_user.id))
-        return
-
-    contact_info = message.text.strip()
-    user_id = message.from_user.id
-    customer_name = message.from_user.first_name
-
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
-        cursor.execute('''
-            INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, customer_name, phone, price, contact_info, n_id))
-        order_id = cursor.lastrowid
-        conn.commit()
-
-    order_code = f"#ORD-{order_id:03d}"
-    bot.send_message(
-        message.chat.id, 
-        f"✅ *သင်၏ အော်ဒါ တင်ခြင်း အောင်မြင်ပါသည်။*\n\n"
-        f"📦 **အော်ဒါနံပါတ်:** `{order_code}`\n"
-        f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
-        f"💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်\n\n"
-        f"လူကြီးမင်း၏ Deli ခ လွှဲထားမှုကို စစ်ဆေးပြီးပါက ဆိုင်မှ အမြန်ဆုံး ဆက်သွယ်ပေးပါမည်ခင်ဗျာ။",
-        reply_markup=main_menu(user_id),
-        parse_mode="Markdown"
-    )
-
-    # Admin သို့ အသိပေးခြင်း
-    try:
-        admin_text = (
-            f"🔔 **အော်ဒါအသစ် ရရှိပါသည်!**\n\n"
-            f"📦 **အော်ဒါနံပါတ်:** `{order_code}`\n"
-            f"👤 **ဝယ်ယူသူ:** {customer_name} (ID: `{user_id}`)\n"
-            f"📱 **ရွေးချယ်သည့်နံပါတ်:** `{phone}`\n"
-            f"💰 **ဈေးနှုန်း:** `{price:,.0f}` ကျပ်\n"
-            f"📍 **ဆက်သွယ်ရန်လိပ်စာ:**\n{contact_info}"
-        )
-        markup = types.InlineKeyboardMarkup()
-        markup.add(
-            types.InlineKeyboardButton("✅ အတည်ပြုမည်", callback_data=f"confirm_ord_{order_id}"),
-            types.InlineKeyboardButton("❌ ငြင်းပယ်မည်", callback_data=f"reject_ord_{order_id}")
-        )
-        bot.send_message(ADMIN_ID, admin_text, reply_markup=markup, parse_mode="Markdown")
-    except Exception as e:
-        logging.error(f"Failed to send admin notification: {e}")
-
-# 📞 ဆိုင်နှင့် ဆက်သွယ်ရန်
-@bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
-@require_channel_join
-def contact_shop(message):
-    text = (
-        "📞 *Star Mobile VIP Phone Shop*\n\n"
-        "💬 *Telegram Admin:* @starmobile63956\n"
-        "📱 *ဖုန်းနံပါတ်:* 09795096484\n"
-        "📍 *လိပ်စာ:* ရန်ကုန်မြို့။\n\n"
-        "မေးမြန်းလိုသည်များကို အထက်ပါ ဆက်သွယ်ရန်များမှတစ်ဆင့် မေးမြန်းနိုင်ပါသည်။"
-    )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-# ----------------------------------------------------
-# 👑 Admin Panel & Backup/Recover System
-# ----------------------------------------------------
-@bot.message_handler(func=lambda m: m.text == "👑 Admin Panel" and m.from_user.id == ADMIN_ID)
-def admin_panel(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(types.KeyboardButton("➕ နံပါတ်အသစ်ထည့်မည်"), types.KeyboardButton("📊 အော်ဒါများကြည့်မည်"))
-    markup.add(types.KeyboardButton("💾 Backup ယူမည်"), types.KeyboardButton("♻️ Recover လုပ်မည်"))
-    markup.add(types.KeyboardButton("🏠 ပင်မစာမျက်နှာသို့"))
-    bot.send_message(message.chat.id, "👑 *Admin Control Panel*", reply_markup=markup, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: m.text == "🏠 ပင်မစာမျက်နှာသို့")
-def back_to_main(message):
-    bot.send_message(message.chat.id, "ပင်မစာမျက်နှာသို့ ပြန်ရောက်ပါပြီ။", reply_markup=main_menu(message.from_user.id))
-
-# Admin: နံပါတ်အသစ်ထည့်ခြင်း
-@bot.message_handler(func=lambda m: m.text == "➕ နံပါတ်အသစ်ထည့်မည်" and m.from_user.id == ADMIN_ID)
-def add_number_start(message):
-    msg = bot.send_message(
-        message.chat.id, 
-        "ထည့်သွင်းလိုသော **ဖုန်းနံပါတ်၊ ဈေးနှုန်း နှင့် အမျိုးအစား (PRO သို့မဟုတ် LUCKY)** ကို အောက်ပါအတိုင်း ရိုက်ထည့်ပါ -\n\n"
-        "*(ဥပမာ - 09795096484 150000 PRO)*",
-        parse_mode="Markdown"
-    )
-    bot.register_next_step_handler(msg, process_add_number)
-
-def process_add_number(message):
-    try:
-        parts = message.text.strip().split()
-        phone = parts[0]
-        price = float(parts[1])
-        n_type = parts[2].upper()
-
-        if n_type not in ['PRO', 'LUCKY']:
-            bot.send_message(message.chat.id, "⚠️ အမျိုးအစားကို PRO သို့မဟုတ် LUCKY ဟုသာ ရေးပါ။")
-            return
-
-        op = detect_operator(phone)
-
-        with sqlite3.connect('vip_shop.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO numbers (phone_number, operator, price, num_type)
-                VALUES (?, ?, ?, ?)
-            ''', (phone, op, price, n_type))
-            conn.commit()
-
-        bot.send_message(message.chat.id, f"✅ နံပါတ် *{phone}* ({op}) ကို အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။", parse_mode="Markdown")
-    except Exception:
-        bot.send_message(message.chat.id, "⚠️ မှားယွင်းနေပါသည်။ ဥပမာအတိုင်း မှန်ကန်စွာ ရိုက်ထည့်ပေးပါ။ (ဥပမာ - 09795096484 150000 PRO)")
-
-# Admin: Backup ယူခြင်း
-@bot.message_handler(func=lambda m: m.text == "💾 Backup ယူမည်" and m.from_user.id == ADMIN_ID)
-def backup_database(message):
-    if os.path.exists('vip_shop.db'):
-        with open('vip_shop.db', 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="💾 **Database Backup ဖိုင် ရပါပြီ။**\n(ဤဖိုင်ကို သိမ်းထားပါက စာရင်းများ ပျောက်ပျက်ပါက ပြန်လည် Recover လုပ်နိုင်ပါသည်။)", parse_mode="Markdown")
-    else:
-        bot.send_message(message.chat.id, "⚠️ Database ဖိုင် ရှာမတွေ့ပါ။")
-
-# Admin: Recover လုပ်ခြင်း
-@bot.message_handler(func=lambda m: m.text == "♻️ Recover လုပ်မည်" and m.from_user.id == ADMIN_ID)
-def start_recover_db(message):
-    msg = bot.send_message(message.chat.id, "ကျေးဇူးပြု၍ သင် Backup ယူထားသော **vip_shop.db** ဖိုင်ကို ပေးပို့ပါခင်ဗျာ။", parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_recover_db)
-
-def process_recover_db(message):
-    if message.document:
-        try:
-            file_name = message.document.file_name
-            if not file_name.endswith('.db'):
-                bot.send_message(message.chat.id, "⚠️ ကျေးဇူးပြု၍ .db ဖိုင်ကိုသာ ပေးပို့ပါခင်ဗျာ။")
-                return
-
-            file_info = bot.get_file(message.document.file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
-
-            with open('vip_shop.db', 'wb') as f:
-                f.write(downloaded_file)
-
-            bot.send_message(message.chat.id, "✅ Database ကို အောင်မြင်စွာ ပြန်လည် Recover လုပ်ပြီးပါပြီ။")
-        except Exception as e:
-            bot.send_message(message.chat.id, f"⚠️ Recover လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်: {e}")
-    else:
-        bot.send_message(message.chat.id, "⚠️ ဖိုင် ပေးပို့ထားခြင်း မရှိပါ။")
-
-# Admin Order Confirm / Reject Callback Handlers
-@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_ord_"))
-def confirm_order_admin(call):
-    if call.from_user.id != ADMIN_ID:
-        return
-    o_id = int(call.data.split("_")[2])
-
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE orders SET status='CONFIRMED' WHERE id=?", (o_id,))
-        cursor.execute("SELECT user_id, chosen_number FROM orders WHERE id=?", (o_id,))
-        order = cursor.fetchone()
-        conn.commit()
-
-    bot.edit_message_text(f"✅ *အော်ဒါ #{o_id:03d} ကို အတည်ပြုလိုက်ပါပြီ။*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-
-    if order:
-        u_id, phone = order
-        try:
-            bot.send_message(u_id, f"🎉 *လူကြီးမင်း၏ အော်ဒါ #{o_id:03d} (`{phone}`) ကို ဆိုင်မှ အတည်ပြုလိုက်ပါပြီ။*\nမကြာမီ ပစ္စည်းပို့ဆောင်ပေးပါမည်ခင်ဗျာ။", parse_mode="Markdown")
-        except Exception:
-            pass
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("reject_ord_"))
-def reject_order_admin(call):
-    if call.from_user.id != ADMIN_ID:
-        return
-    o_id = int(call.data.split("_")[2])
-
-    with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id, chosen_number, ref_id FROM orders WHERE id=?", (o_id,))
-        order = cursor.fetchone()
-
-        if order:
-            u_id, phone, ref_id = order
-            if ref_id:
-                cursor.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
-            cursor.execute("UPDATE orders SET status='REJECTED' WHERE id=?", (o_id,))
-            conn.commit()
-
-            bot.edit_message_text(f"❌ *အော်ဒါ #{o_id:03d} ကို ငြင်းပယ်လိုက်ပါပြီ။ နံပါတ်ကို ပြန်ဖွင့်ပေးလိုက်ပါသည်။*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-
-            try:
-                bot.send_message(u_id, f"❌ *လူကြီးမင်း၏ အော်ဒါ #{o_id:03d} (`{phone}`) မှာ ငြင်းပယ်ခြင်း ခံလိုက်ရပါသည်။*\nအသေးစိတ်သိရှိလိုပါက ဆိုင်သို့ ဆက်သွယ်မေးမြန်းနိုင်ပါသည်။", parse_mode="Markdown")
-            except Exception:
-                pass
-
-# ----------------------------------------------------
-# 🚀 Bot Infinity Polling စတင်ခြင်း
-# ----------------------------------------------------
-print("VIP Phone Shop Bot runs successfully!")
-bot.infinity_polling()
+        f"📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတ
