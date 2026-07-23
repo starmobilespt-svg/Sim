@@ -123,17 +123,34 @@ def ping_command(message):
     start_time = time.time()
     msg = bot.reply_to(message, "Pinging... 📡")
     end_time = time.time()
-    ping_time = round((end_time - start_time) * 1000) 
-    bot.edit_message_text(f"🏓 *Pong!*\nBot is active and running smoothly.\n⏱ Latency: `{ping_time}ms`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+    ping_time = round((end_time - start_time) * 1000)
+    
+    ping_lines = [
+        "🏓 *Pong!*\n",
+        "Bot is active and running smoothly.",
+        f"⏱ Latency: `{ping_time}ms`"
+    ]
+    bot.edit_message_text("\n".join(ping_lines), chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     register_user(user_id, message.from_user.first_name)
+    
+    welcome_lines = [
+        "✨ *Phone Numbers Sales Bot မှ ကြိုဆိုပါတယ်။*\n",
+        "နံပါတ်လှများနှင့် Lucky Phone များကို အောက်ပါ ခလုတ်များမှတစ်ဆင့် ရွေးချယ် ဝယ်ယူနိုင်ပါပြီခင်ဗျာ။"
+    ]
+    
     if not check_user_channel(user_id):
-        bot.send_message(message.chat.id, "⚠️ *ကျေးဇူးပြု၍ ကျွန်ုပ်တို့၏ Channel ကို အရင် Join ပေးပါ။*\n\nBot ကို စတင်အသုံးပြုရန် အောက်ပါ Channel ကို Join ပြီးမှ **'✅ Join ပြီးပါပြီ'** ကို နှိပ်ပေးပါ။", reply_markup=not_joined_markup(), parse_mode="Markdown")
+        warn_lines = [
+            "⚠️ *ကျေးဇူးပြု၍ ကျွန်ုပ်တို့၏ Channel ကို အရင် Join ပေးပါ။*\n",
+            "Bot ကို စတင်အသုံးပြုရန် အောက်ပါ Channel ကို Join ပြီးမှ **'✅ Join ပြီးပါပြီ'** ကို နှိပ်ပေးပါ။"
+        ]
+        bot.send_message(message.chat.id, "\n".join(warn_lines), reply_markup=not_joined_markup(), parse_mode="Markdown")
         return
-    bot.send_message(message.chat.id, "✨ *Phone Numbers Sales Bot မှ ကြိုဆိုပါတယ်။*\n\nနံပါတ်လှများနှင့် Lucky Phone များကို အောက်ပါ ခလုတ်များမှတစ်ဆင့် ရွေးချယ် ဝယ်ယူနိုင်ပါပြီခင်ဗျာ။", reply_markup=main_menu(user_id), parse_mode="Markdown")
+        
+    bot.send_message(message.chat.id, "\n".join(welcome_lines), reply_markup=main_menu(user_id), parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "check_join")
 def verify_join_callback(call):
@@ -142,7 +159,11 @@ def verify_join_callback(call):
     if check_user_channel(user_id):
         bot.answer_callback_query(call.id, "ကျေးဇူးတင်ပါတယ်! Channel Join ပြီးသားဖြစ်တာကို စစ်ဆေးတွေ့ရှိရပါပြီ။")
         bot.delete_message(call.message.chat.id, call.message.message_id)
-        bot.send_message(call.message.chat.id, "✨ *Phone Numbers Sales Bot မှ ကြိုဆိုပါတယ်။*\n\nနံပါတ်လှများနှင့် Lucky Phone များကို အောက်ပါ ခလုတ်များမှတစ်ဆင့် ရွေးချယ် ဝယ်ယူနိုင်ပါပြီခင်ဗျာ။", reply_markup=main_menu(user_id), parse_mode="Markdown")
+        welcome_lines = [
+            "✨ *Phone Numbers Sales Bot မှ ကြိုဆိုပါတယ်။*\n",
+            "နံပါတ်လှများနှင့် Lucky Phone များကို အောက်ပါ ခလုတ်များမှတစ်ဆင့် ရွေးချယ် ဝယ်ယူနိုင်ပါပြီခင်ဗျာ။"
+        ]
+        bot.send_message(call.message.chat.id, "\n".join(welcome_lines), reply_markup=main_menu(user_id), parse_mode="Markdown")
     else:
         bot.answer_callback_query(call.id, "⚠️ ကျေးဇူးပြု၍ Channel ကို အရင် Join ပေးပါ။", show_alert=True)
 
@@ -275,7 +296,11 @@ def filter_by_price(call):
 @bot.message_handler(func=lambda m: m.text == "🔍 နံပါတ်ရှာမည်")
 @require_channel_join
 def search_number(message):
-    msg = bot.send_message(message.chat.id, "🔍 သင်ရှာဖွေလိုသော ဂဏန်းကို ရိုက်ထည့်ပါ\n*(ဥပမာ - 777 သို့မဟုတ် 9999)*", parse_mode="Markdown")
+    search_lines = [
+        "🔍 သင်ရှာဖွေလိုသော ဂဏန်းကို ရိုက်ထည့်ပါ",
+        "*(ဥပမာ - 777 သို့မဟုတ် 9999)*"
+    ]
+    msg = bot.send_message(message.chat.id, "\n".join(search_lines), parse_mode="Markdown")
     bot.register_next_step_handler(msg, process_search)
 
 def process_search(message):
@@ -309,7 +334,15 @@ def show_my_orders(message):
         return
     for row in rows:
         o_id, phone, price, contact_info, status, date = row
-        text = f"📦 **အော်ဒါနံပါတ်:** `#ORD-{o_id:03d}`\n📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်\n📍 **လိပ်စာ:** {contact_info}\n📅 **ရက်စွဲ:** {date}\n📌 **အခြေအနေ:** ဆောင်ရွက်ဆဲ (Pending)"
+        order_lines = [
+            f"📦 **အော်ဒါနံပါတ်:** `#ORD-{o_id:03d}`",
+            f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`",
+            f"💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်",
+            f"📍 **လိပ်စာ:** {contact_info}",
+            f"📅 **ရက်စွဲ:** {date}",
+            "📌 **အခြေအနေ:** ဆောင်ရွက်ဆဲ (Pending)"
+        ]
+        text = "\n".join(order_lines)
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("❌ ဤအော်ဒါကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"user_cancel_ord_{o_id}"))
         bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
@@ -356,8 +389,21 @@ def process_buy(call):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ ဝယ်ယူမှုကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"cancel_buy_{n_id}"))
 
-    text_msg = f"🎯 သင်ရွေးချယ်ထားသော နံပါတ် - *{phone}*\n💰 ကျသင့်ငွေ (ဖုန်းဘိုး) - `{price:,.0f}` ကျပ်\n\n📦 *အိမ်ရောက်ငွေချေ (COD) ဖြင့် ပို့ဆောင်ပေးမည်ဖြစ်ပါသည်။*\nသို့သော် Deli ခ **`4,000`** ကျပ်ကို အရင်ကြိုတင်လွှဲပေးရပါမည်။\n\n💳 **Deli ခ 4,000 လွှဲရန် အကောင့်များ:**\n🔹 *KPay:* `09795096484` (Si Thu Aung)\n🔹 *WavePay:* `09792654163` (Si Thu Aung)\n\n📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတွက် သင်၏ နာမည်၊ ဖုန်းနံပါတ် နှင့် လိပ်စာအတိအကျ ကို အောက်ပါပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ -\n\n*(ဥပမာ - မောင်မောင်၊ 09792654163၊ အမှတ်(၁၂)၊ ဗိုလ်ချုပ်လမ်း၊ ရန်ကုန်)*"
+    msg_lines = [
+        f"🎯 သင်ရွေးချယ်ထားသော နံပါတ် - *{phone}*",
+        f"💰 ကျသင့်ငွေ (ဖုန်းဘိုး) - `{price:,.0f}` ကျပ်\n",
+        "📦 *အိမ်ရောက်ငွေချေ (COD) ဖြင့် ပို့ဆောင်ပေးမည်ဖြစ်ပါသည်။*",
+        "သို့သော် Deli ခ **`4,000`** ကျပ်ကို အရင်ကြိုတင်လွှဲပေးရပါမည်。\n",
+        "💳 **Deli ခ 4,000 လွှဲရန် အကောင့်များ:**",
+        "🔹 *KPay:* `09795096484` (Si Thu Aung)",
+        "🔹 *WavePay:* `09792654163` (Si Thu Aung)\n",
+        "📝 Deli ခလွှဲပြီးပါက ပစ္စည်းပို့ရန်အတွက် သင်၏",
+        "**နာမည်၊ ဖုန်းနံပါတ် နှင့် လိပ်စာအတိအကျ** ကို",
+        "အောက်ပါပုံစံအတိုင်း ရိုက်ထည့်ပေးပါ -\n",
+        "*(ဥပမာ - မောင်မောင်၊ 09792654163၊ အမှတ်(၁၂)၊ ဗိုလ်ချုပ်လမ်း၊ ရန်ကုန်)*"
+    ]
     
+    text_msg = "\n".join(msg_lines)
     msg = bot.send_message(call.message.chat.id, text_msg, reply_markup=markup, parse_mode="Markdown")
     bot.register_next_step_handler(msg, save_order, phone, price, n_id)
 
@@ -380,15 +426,4 @@ def save_order(message, phone, price, n_id):
     customer_name = message.from_user.first_name
 
     with sqlite3.connect('vip_shop.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT status FROM numbers WHERE id=?", (n_id,))
-        status = cursor.fetchone()
-        if not status or status[0] == 'SOLD':
-            bot.send_message(message.chat.id, "❌ တောင်းပန်ပါသည်။ သင်ရွေးချယ်ထားသော နံပါတ်မှာ အခြားသူဝယ်ယူသွားပါပြီ။")
-            return
-        cursor.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (user_id, customer_name, phone, price, contact_info, n_id))
-        order_id = cursor.lastrowid
-        cursor.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (n_id,))
-        conn.commit()
-
-    success_text = f"✅ *အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။*\n\n📦 **အေ
+        cursor 
