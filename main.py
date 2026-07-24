@@ -18,6 +18,9 @@ ITEMS_PER_PAGE = 5
 
 bot = telebot.TeleBot(TOKEN)
 
+# Admin က Restore ပြုလုပ်ရန် စောင့်ဆိုင်းနေသော State
+waiting_for_restore = {}
+
 # 🌐 Flask Server & Keep Alive Ping (Render Free 24/7 Run ရန်)
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 10000))
@@ -122,54 +125,138 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# 👑 ADMIN PANEL & COMMANDS
+# 👑 ADMIN PANEL & CONTROL BUTTONS
 @bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
 def show_admin_panel(message):
     if message.from_user.id != ADMIN_ID: return
-    text = "👑 **Admin Control Panel** 👑\n\n" + \
-           "📌 **၁။ နံပါတ်အသစ်ထည့်ရန် (Command):**\n" + \
+    text = "👑 **Admin Control Panel**\n\n" + \
+           "အောက်ပါ Button များမှတစ်ဆင့် လွယ်ကူစွာ စီမံခန့်ခွဲနိုင်ပါသည်။\n\n" + \
+           "📌 **နံပါတ်အသစ်ထည့်ရန် (Command):**\n" + \
            "`/addnum ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
            "*(ဥပမာ: `/addnum 09 777 888 999, 150000, PRO`)*\n\n" + \
-           "📌 **၂။ စာလုံးပေါင်း Broadcast ပို့ရန်:**\n" + \
-           "`/broadcast သင်ပို့ချင်သောစာ`\n" + \
-           "*(ဥပမာ: `/broadcast မင်္ဂလာပါ နံပါတ်အသစ်များ ရောက်ပါတယ်`)*\n\n" + \
-           "📌 **၃။ Database Backup / Restore:**\n" + \
-           "• Backup ယူရန် -> `/backup`\n" + \
-           "• Restore ပြန်လုပ်ရန် -> `.db` ဖိုင်ပို့ပြီး Caption တွင် `/restore` ဟုရေးပါ။"
+           "📌 **Broadcast စာပို့ရန် (Command):**\n" + \
+           "`/broadcast စာသား`"
     
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📦 Database Backup ယူမည်", callback_data="admin_do_backup"))
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("📦 အော်ဒါများကြည့်ရန် / Cancel လုပ်ရန်", callback_data="admin_view_orders"),
+        types.InlineKeyboardButton("📱 ဖုန်းနံပါတ်များကြည့်ရန် / ဖျက်ရန်", callback_data="admin_view_numbers"),
+        types.InlineKeyboardButton("💾 Database Backup ယူမည်", callback_data="admin_do_backup"),
+        types.InlineKeyboardButton("🔄 Database Restore လုပ်မည်", callback_data="admin_start_restore")
+    )
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
+# 👑 ADMIN: အော်ဒါများကြည့်ရန် နှင့် Cancel လုပ်ရန်
+@bot.callback_query_handler(func=lambda call: call.data == "admin_view_orders")
+def admin_view_orders(call):
+    if call.from_user.id != ADMIN_ID: return
+    with sqlite3.connect('vip_shop.db') as conn:
+        rows = conn.cursor().execute("SELECT id, customer_name, chosen_number, price, contact_info, user_id FROM orders WHERE status='PENDING'").fetchall()
+    
+    if not rows:
+        bot.answer_callback_query(call.id, "လောလောဆယ် PENDING အော်ဒါ မရှိပါ။", show_alert=True)
+        return
+    
+    bot.answer_callback_query(call.id)
+    for r in rows:
+        txt = "📦 **အော်ဒါနံပါတ်:** #ORD-" + "{:03d}".format(r[0]) + "\n" + \
+              "👤 **ဝယ်သူ:** " + str(r[1]) + " (ID: `" + str(r[5]) + "`)\n" + \
+              "📱 **မှာယူသည့်နံပါတ်:** `" + str(r[2]) + "`\n" + \
+              "💰 **ကျသင့်ငွေ:** " + "{:,.0f}".format(r[3]) + " ကျပ်\n" + \
+              "📍 **လိပ်စာ:** " + str(r[4])
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည် (နံပါတ်ပြန်ဖွင့်မည်)", callback_data="admin_cancel_ord_" + str(r[0])))
+        bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_cancel_ord_"))
+def admin_cancel_order(call):
+    if call.from_user.id != ADMIN_ID: return
+    oid = int(call.data.split("_")[3])
+    with sqlite3.connect('vip_shop.db') as conn:
+        c = conn.cursor()
+        ord_data = c.execute("SELECT ref_id, user_id, chosen_number FROM orders WHERE id=?", (oid,)).fetchone()
+        if ord_data:
+            ref_id, user_id, phone = ord_data
+            if ref_id:
+                c.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
+            c.execute("DELETE FROM orders WHERE id=?", (oid,))
+            conn.commit()
+            
+            bot.answer_callback_query(call.id, "အော်ဒါကို ပယ်ဖျက်လိုက်ပါပြီ။", show_alert=True)
+            bot.edit_message_text("❌ **အော်ဒါ #ORD-" + "{:03d}".format(oid) + " ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            
+            # User ထံ အကြောင်းကြားရန်
+            try:
+                bot.send_message(user_id, "ℹ️ သင်၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + str(phone) + "`) ကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။")
+            except Exception: pass
+
+# 👑 ADMIN: မှားထည့်ထားသော ဖုန်းနံပါတ်များ ဖျက်ရန်
+@bot.callback_query_handler(func=lambda call: call.data == "admin_view_numbers")
+def admin_view_numbers(call):
+    if call.from_user.id != ADMIN_ID: return
+    with sqlite3.connect('vip_shop.db') as conn:
+        rows = conn.cursor().execute("SELECT id, phone_number, operator, price, status FROM numbers ORDER BY id DESC LIMIT 10").fetchall()
+    
+    if not rows:
+        bot.answer_callback_query(call.id, "နံပါတ် မရှိသေးပါ။", show_alert=True)
+        return
+    
+    bot.answer_callback_query(call.id)
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for r in rows:
+        status_txt = "AVAILABLE" if r[4] == 'AVAILABLE' else "SOLD"
+        btn_txt = "📱 " + str(r[1]) + " (" + str(r[2]) + ") - " + "{:,.0f}".format(r[3]) + " ကျပ် [" + status_txt + "]"
+        markup.add(types.InlineKeyboardButton("🗑️ ဖျက်မည်: " + str(r[1]), callback_data="admin_del_num_" + str(r[0])))
+    
+    bot.send_message(call.message.chat.id, "📱 **နောက်ဆုံးထည့်ထားသော နံပါတ် (၁၀) ခု -**\n*(ဖျက်လိုပါက အောက်ပါ Button ကို နှိပ်ပါ)*", reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_del_num_"))
+def admin_delete_number(call):
+    if call.from_user.id != ADMIN_ID: return
+    nid = int(call.data.split("_")[3])
+    with sqlite3.connect('vip_shop.db') as conn:
+        c = conn.cursor()
+        num = c.execute("SELECT phone_number FROM numbers WHERE id=?", (nid,)).fetchone()
+        if num:
+            c.execute("DELETE FROM numbers WHERE id=?", (nid,))
+            conn.commit()
+            bot.answer_callback_query(call.id, "နံပါတ် " + str(num[0]) + " ကို ဖျက်လိုက်ပါပြီ။", show_alert=True)
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        else:
+            bot.answer_callback_query(call.id, "နံပါတ် မတွေ့ရှိပါ။", show_alert=True)
+
+# 👑 ADMIN: BACKUP & RESTORE BUTTONS
 @bot.callback_query_handler(func=lambda call: call.data == "admin_do_backup")
 def callback_admin_backup(call):
     if call.from_user.id != ADMIN_ID: return
     try:
         with open('vip_shop.db', 'rb') as f:
-            bot.send_document(call.message.chat.id, f, caption="📦 Database Backup ဖိုင်")
+            bot.send_document(call.message.chat.id, f, caption="📦 Database Backup ဖိုင်ရပါပြီ။")
+            bot.answer_callback_query(call.id, "Backup ဖိုင် ပို့ပေးလိုက်ပါပြီ။")
     except Exception as e:
         bot.send_message(call.message.chat.id, "❌ Error: " + str(e))
 
-@bot.message_handler(commands=['backup'])
-def admin_backup(message):
-    if message.from_user.id != ADMIN_ID: return
-    try:
-        with open('vip_shop.db', 'rb') as f:
-            bot.send_document(message.chat.id, f, caption="📦 Database Backup")
-    except Exception as e:
-        bot.send_message(message.chat.id, "❌ Error: " + str(e))
+@bot.callback_query_handler(func=lambda call: call.data == "admin_start_restore")
+def callback_admin_start_restore(call):
+    if call.from_user.id != ADMIN_ID: return
+    waiting_for_restore[ADMIN_ID] = True
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['document'])
-def admin_restore(message):
+def admin_handle_document(message):
     if message.from_user.id != ADMIN_ID: return
-    if message.caption == "/restore" or (message.reply_to_message and message.reply_to_message.document and message.text == "/restore"):
+    # Restore ခလုတ်နှိပ်ထားလျှင် သို့မဟုတ် Caption တွင် /restore ပါလျှင်
+    if waiting_for_restore.get(ADMIN_ID) or message.caption == "/restore":
         try:
             fi = bot.get_file(message.document.file_id)
             df = bot.download_file(fi.file_path)
             with open('vip_shop.db', 'wb') as f: f.write(df)
-            bot.send_message(message.chat.id, "✅ Database Restore အောင်မြင်ပါသည်။")
+            waiting_for_restore[ADMIN_ID] = False
+            bot.send_message(message.chat.id, "✅ **Database ကို အောင်မြင်စွာ Restore ပြုလုပ်ပြီးပါပြီခင်ဗျာ။**", parse_mode="Markdown")
         except Exception as e:
-            bot.send_message(message.chat.id, "❌ Error: " + str(e))
+            bot.send_message(message.chat.id, "❌ Restore ပြုလုပ်ရာတွင် အမှားဖြစ်နေပါသည်: " + str(e))
 
 @bot.message_handler(commands=['broadcast'])
 def admin_broadcast(message):
@@ -314,4 +401,4 @@ def save_order(message, phone, price, nid):
     except Exception: pass
 
 bot.polling(none_stop=True)
-    
+        
