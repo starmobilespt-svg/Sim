@@ -18,7 +18,7 @@ ITEMS_PER_PAGE = 5
 
 bot = telebot.TeleBot(TOKEN)
 
-# 🌐 Flask Server & Keep Alive Ping
+# 🌐 Flask Server & Keep Alive Ping (Render Free 24/7 Run ရန်)
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 10000))
 
@@ -42,7 +42,7 @@ def keep_alive_ping():
 
 threading.Thread(target=keep_alive_ping, daemon=True).start()
 
-# 🗄️ Database Init
+# 🗄️ Database တည်ဆောက်ခြင်း
 def init_db():
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
@@ -82,8 +82,7 @@ def check_user_channel(user_id):
 def main_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်")
-    markup.add("📡 Operator အလိုက်ကြည့်မည်", "🔍 နံပါတ်ရှာမည်")
-    markup.add("💰 ဈေးနှုန်းအလိုက် ရှာမည်", "📦 ကျွန်ုပ်၏ အော်ဒါများ")
+    markup.add("📡 Operator အလိုက်ကြည့်မည်")
     markup.add("📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
     if user_id == ADMIN_ID: markup.add("👑 Admin Panel")
     return markup
@@ -124,7 +123,7 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# 🛡️ ADMIN COMMANDS
+# 👑 ADMIN COMMANDS (Backup, Restore, Broadcast, Add Number)
 @bot.message_handler(commands=['backup'])
 def admin_backup(message):
     if message.from_user.id != ADMIN_ID: return
@@ -151,7 +150,7 @@ def admin_broadcast(message):
     if message.from_user.id != ADMIN_ID: return
     txt = message.text.replace("/broadcast", "").strip()
     if not txt:
-        bot.send_message(message.chat.id, "❌ ဥပမာ - `/broadcast စာသား`", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ ဥပမာ - `/broadcast မင်္ဂလာပါ`", parse_mode="Markdown")
         return
     with sqlite3.connect('vip_shop.db') as conn:
         users = conn.cursor().execute("SELECT user_id FROM users").fetchall()
@@ -182,7 +181,7 @@ def admin_add_number(message):
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
 
-# 🛍️ USER SHOPPING
+# 🛍️ USER SHOPPING LOGIC
 @bot.message_handler(func=lambda m: m.text == "✨ နံပါတ်လှများကြည့်မည်")
 @require_channel_join
 def show_pro_numbers(message):
@@ -242,75 +241,6 @@ def filter_by_operator(call):
         markup.add(types.InlineKeyboardButton(r[1] + " - " + "{:,.0f}".format(r[2]) + " ကျပ်", callback_data="buy_" + str(r[0])))
     bot.edit_message_text("📡 *" + op + "* နံပါတ်များ -", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda m: m.text == "💰 ဈေးနှုန်းအလိုက် ရှာမည်")
-@require_channel_join
-def price_filter_menu(message):
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(types.InlineKeyboardButton("🔹 ၁ သိန်းအောက်", callback_data="pr_0_100000"),
-               types.InlineKeyboardButton("🔹 ၁ သိန်း - ၅ သိန်း", callback_data="pr_100000_500000"),
-               types.InlineKeyboardButton("🔹 ၅ သိန်း - ၁၀ သိန်း", callback_data="pr_500000_1000000"),
-               types.InlineKeyboardButton("🔹 ၁၀ သိန်းအထက်", callback_data="pr_1000000_999999999"))
-    bot.send_message(message.chat.id, "ဈေးနှုန်း ရွေးပါ -", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("pr_"))
-def filter_by_price(call):
-    p = call.data.split("_")
-    with sqlite3.connect('vip_shop.db') as conn:
-        rows = conn.cursor().execute("SELECT id, phone_number, operator, price FROM numbers WHERE price BETWEEN ? AND ? AND status='AVAILABLE'", (float(p[1]), float(p[2]))).fetchall()
-    if not rows:
-        bot.answer_callback_query(call.id, "နံပါတ် မရှိပါ။")
-        return
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for r in rows:
-        markup.add(types.InlineKeyboardButton(r[1] + " (" + r[2] + ") - " + "{:,.0f}".format(r[3]) + " ကျပ်", callback_data="buy_" + str(r[0])))
-    bot.edit_message_text("💰 ရွေးချယ်ထားသော နံပါတ်များ -", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: m.text == "🔍 နံပါတ်ရှာမည်")
-@require_channel_join
-def search_number(message):
-    msg = bot.send_message(message.chat.id, "🔍 ရှာလိုသော ဂဏန်း ရိုက်ပါ -")
-    bot.register_next_step_handler(msg, process_search)
-
-def process_search(message):
-    kw = message.text.strip()
-    with sqlite3.connect('vip_shop.db') as conn:
-        rows = conn.cursor().execute("SELECT id, phone_number, operator, price FROM numbers WHERE phone_number LIKE ? AND status='AVAILABLE'", ('%' + kw + '%',)).fetchall()
-    if not rows:
-        bot.send_message(message.chat.id, "❌ ရှာမတွေ့ပါ။")
-        return
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for r in rows:
-        markup.add(types.InlineKeyboardButton(r[1] + " (" + r[2] + ") - " + "{:,.0f}".format(r[3]) + " ကျပ်", callback_data="buy_" + str(r[0])))
-    bot.send_message(message.chat.id, "🔍 ရလဒ်များ -", reply_markup=markup)
-
-@bot.message_handler(func=lambda m: m.text in ["📦 ကျွန်ုပ်၏ အော်ဒါများ", "/myorders"])
-@require_channel_join
-def show_my_orders(message):
-    uid = message.from_user.id
-    with sqlite3.connect('vip_shop.db') as conn:
-        rows = conn.cursor().execute("SELECT id, chosen_number, price, contact_info, date FROM orders WHERE user_id=? AND status='PENDING'", (uid,)).fetchall()
-    if not rows:
-        bot.send_message(message.chat.id, "📭 အော်ဒါ မှတ်တမ်း မရှိပါ။")
-        return
-    for r in rows:
-        txt = "📦 အော်ဒါ: #ORD-" + "{:03d}".format(r[0]) + "\n📱 ဖုန်း: " + str(r[1]) + "\n💰 ကျသင့်ငွေ: " + "{:,.0f}".format(r[2]) + " ကျပ်\n📍 လိပ်စာ: " + str(r[3]) + "\n📅 ရက်စွဲ: " + str(r[4])
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("❌ အော်ဒါ ဖျက်မည်", callback_data="user_cancel_ord_" + str(r[0])))
-        bot.send_message(message.chat.id, txt, reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("user_cancel_ord_"))
-def cancel_user_order(call):
-    oid = int(call.data.split("_")[3])
-    with sqlite3.connect('vip_shop.db') as conn:
-        c = conn.cursor()
-        ord_data = c.execute("SELECT ref_id, chosen_number FROM orders WHERE id=? AND user_id=?", (oid, call.from_user.id)).fetchone()
-        if ord_data:
-            if ord_data[0]: c.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ord_data[0],))
-            c.execute("DELETE FROM orders WHERE id=?", (oid,))
-            conn.commit()
-            bot.answer_callback_query(call.id, "အော်ဒါ ဖျက်ပြီးပါပြီ။")
-            bot.edit_message_text("❌ အော်ဒါ #" + "{:03d}".format(oid) + " ပယ်ဖျက်လိုက်ပါပြီ။", call.message.chat.id, call.message.message_id)
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def process_buy(call):
     nid = call.data.split("_")[1]
@@ -331,7 +261,7 @@ def user_cancel_buy(call):
     bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
 
 def save_order(message, phone, price, nid):
-    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🔍 နံပါတ်ရှာမည်", "💰 ဈေးနှုန်းအလိုက် ရှာမည်", "📦 ကျွန်ုပ်၏ အော်ဒါများ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
+    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
         bot.send_message(message.chat.id, "❌ ပယ်ဖျက်လိုက်ပါသည်။")
         return
     info = message.text
