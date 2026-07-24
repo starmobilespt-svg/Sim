@@ -82,8 +82,7 @@ def check_user_channel(user_id):
 def main_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်")
-    markup.add("📡 Operator အလိုက်ကြည့်မည်")
-    markup.add("📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
+    markup.add("📡 Operator အလိုက်ကြည့်မည်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
     if user_id == ADMIN_ID: markup.add("👑 Admin Panel")
     return markup
 
@@ -123,7 +122,34 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# 👑 ADMIN COMMANDS (Backup, Restore, Broadcast, Add Number)
+# 👑 ADMIN PANEL & COMMANDS
+@bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
+def show_admin_panel(message):
+    if message.from_user.id != ADMIN_ID: return
+    text = "👑 **Admin Control Panel** 👑\n\n" + \
+           "📌 **၁။ နံပါတ်အသစ်ထည့်ရန် (Command):**\n" + \
+           "`/addnum ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
+           "*(ဥပမာ: `/addnum 09 777 888 999, 150000, PRO`)*\n\n" + \
+           "📌 **၂။ စာလုံးပေါင်း Broadcast ပို့ရန်:**\n" + \
+           "`/broadcast သင်ပို့ချင်သောစာ`\n" + \
+           "*(ဥပမာ: `/broadcast မင်္ဂလာပါ နံပါတ်အသစ်များ ရောက်ပါတယ်`)*\n\n" + \
+           "📌 **၃။ Database Backup / Restore:**\n" + \
+           "• Backup ယူရန် -> `/backup`\n" + \
+           "• Restore ပြန်လုပ်ရန် -> `.db` ဖိုင်ပို့ပြီး Caption တွင် `/restore` ဟုရေးပါ။"
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📦 Database Backup ယူမည်", callback_data="admin_do_backup"))
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_do_backup")
+def callback_admin_backup(call):
+    if call.from_user.id != ADMIN_ID: return
+    try:
+        with open('vip_shop.db', 'rb') as f:
+            bot.send_document(call.message.chat.id, f, caption="📦 Database Backup ဖိုင်")
+    except Exception as e:
+        bot.send_message(call.message.chat.id, "❌ Error: " + str(e))
+
 @bot.message_handler(commands=['backup'])
 def admin_backup(message):
     if message.from_user.id != ADMIN_ID: return
@@ -177,9 +203,18 @@ def admin_add_number(message):
         with sqlite3.connect('vip_shop.db') as conn:
             conn.cursor().execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, ntype))
             conn.commit()
-        bot.send_message(message.chat.id, "✅ ဖုန်းနံပါတ် " + phone + " ထည့်ပြီးပါပြီ။")
+        bot.send_message(message.chat.id, "✅ ဖုန်းနံပါတ် " + phone + " (" + op + ") ထည့်ပြီးပါပြီ။")
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
+
+# 📞 ဆိုင်နှင့် ဆက်သွယ်ရန်
+@bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
+def contact_shop(message):
+    text = "📞 **Star Mobile VIP Shop**\n\n" + \
+           "💬 Telegram Admin: @starmobile63956\n" + \
+           "📱 ဖုန်းနံပါတ်: 09795096484 / 09792654163\n" + \
+           "⏰ အလုပ်ချိန်: မနက် ၉ နာရီ မှ ည ၉ နာရီအထိ"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # 🛍️ USER SHOPPING LOGIC
 @bot.message_handler(func=lambda m: m.text == "✨ နံပါတ်လှများကြည့်မည်")
@@ -279,3 +314,4 @@ def save_order(message, phone, price, nid):
     except Exception: pass
 
 bot.polling(none_stop=True)
+    
