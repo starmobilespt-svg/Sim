@@ -22,31 +22,34 @@ ITEMS_PER_PAGE = 5  # တစ်မျက်နှာလျှင် ပြမည
 bot = telebot.TeleBot(TOKEN)
 
 # ----------------------------------------------------
-# Render Web Service မပိတ်သွားစေရန် Flask Web Server & Ping
+# 🌐 Render Free Service မပိတ်သွားစေရန် Flask Web Server & Ping
 # ----------------------------------------------------
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 10000))
 
 @app.route('/')
 def home():
-    return "VIP Phone Numbers Bot is running 24/7 successfully!"
+    return "VIP Phone Numbers Bot is running 24/7 successfully on Render!"
 
 def run_web_server():
     app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
+# Web Server ကို Thread ဖြင့် စတင်ပါမည်
 server_thread = threading.Thread(target=run_web_server)
 server_thread.daemon = True
 server_thread.start()
 
-# 15 မိနစ် တစ်ခါ ပြန် Ping မည့် စနစ်
+# ၁၅ မိနစ်တစ်ခါ မအိပ်သွားစေရန် Self-Ping လုပ်ပေးမည့် စနစ်
 def keep_alive_ping():
+    time.sleep(10) # Server တက်လာသည်အထိ ခေတ္တစောင့်မည်
     while True:
-        time.sleep(15 * 60) # ၁၅ မိနစ်
         try:
-            requests.get(f"http://localhost:{PORT}")
+            # Render App URL သို့မဟုတ် Local Host သို့ လှမ်း Ping ပါမည်
+            requests.get(f"http://127.0.0.1:{PORT}")
             logging.info("Keep-alive ping sent successfully.")
         except Exception as e:
             logging.error(f"Keep-alive ping failed: {e}")
+        time.sleep(14 * 60) # ၁၄ မိနစ်ခြားတစ်ခါ Ping မည်
 
 ping_thread = threading.Thread(target=keep_alive_ping)
 ping_thread.daemon = True
@@ -214,14 +217,13 @@ def admin_backup(message):
 @bot.message_handler(content_types=['document'])
 def admin_restore(message):
     if message.from_user.id != ADMIN_ID: return
-    # Caption တွင် /restore ဟုရေးခဲ့လျှင် (သို့) bot ပို့သော ဖိုင်ကို /restore ဖြင့် reply ပြန်လျှင်
     if message.caption == "/restore" or (message.reply_to_message and message.reply_to_message.document and message.text == "/restore"):
         try:
             file_info = bot.get_file(message.document.file_id)
             downloaded_file = bot.download_file(file_info.file_path)
             with open('vip_shop.db', 'wb') as new_file:
                 new_file.write(downloaded_file)
-            bot.send_message(message.chat.id, "✅ Database ကို အောင်မြင်စွာ Restore လုပ်ပြီးပါပြီ။ (ပြောင်းလဲမှုများ သိသာရန် Bot ကို Restart ချပေးပါ)")
+            bot.send_message(message.chat.id, "✅ Database ကို အောင်မြင်စွာ Restore လုပ်ပြီးပါပြီ။")
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Restore လုပ်ရာတွင် အမှားဖြစ်နေပါသည်: {e}")
 
@@ -262,7 +264,7 @@ def admin_add_number(message):
         price = float(parts[1].strip())
         num_type = parts[2].strip().upper()
         
-        # Space များပါပါက အလိုလျောက်ဖြုတ်ပေးမည်
+        # Space အပိုများကို Auto ဖြုတ်ပေးမည်
         phone = ''.join(filter(str.isdigit, raw_phone))
         op = detect_operator(phone)
         
@@ -479,5 +481,4 @@ def show_my_orders(message):
             f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
             f"💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်\n"
             f"📍 **လိပ်စာ:** {contact_info}\n"
-            f"📅 **ရက်စွဲ:** {date}\n"
-            f"📌 **အခြေအနေ:** ဆောင်
+         
