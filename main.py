@@ -349,4 +349,3 @@ def save_order(message, phone, price, nid):
     except Exception: pass
 
 bot.polling(none_stop=True)
-        
