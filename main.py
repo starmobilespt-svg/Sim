@@ -8,6 +8,8 @@ import threading
 from flask import Flask
 import csv
 import io
+import time
+import requests
 
 # Logging စနစ်
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -20,21 +22,35 @@ ITEMS_PER_PAGE = 5  # တစ်မျက်နှာလျှင် ပြမည
 bot = telebot.TeleBot(TOKEN)
 
 # ----------------------------------------------------
-# Render Web Service မပိတ်သွားစေရန် Flask Web Server
+# Render Web Service မပိတ်သွားစေရန် Flask Web Server & Ping
 # ----------------------------------------------------
 app = Flask(__name__)
+PORT = int(os.environ.get("PORT", 10000))
 
 @app.route('/')
 def home():
     return "VIP Phone Numbers Bot is running 24/7 successfully!"
 
 def run_web_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
 server_thread = threading.Thread(target=run_web_server)
 server_thread.daemon = True
 server_thread.start()
+
+# 15 မိနစ် တစ်ခါ ပြန် Ping မည့် စနစ်
+def keep_alive_ping():
+    while True:
+        time.sleep(15 * 60) # ၁၅ မိနစ်
+        try:
+            requests.get(f"http://localhost:{PORT}")
+            logging.info("Keep-alive ping sent successfully.")
+        except Exception as e:
+            logging.error(f"Keep-alive ping failed: {e}")
+
+ping_thread = threading.Thread(target=keep_alive_ping)
+ping_thread.daemon = True
+ping_thread.start()
 
 # ----------------------------------------------------
 # 🗄️ Database တည်ဆောက်ခြင်း
@@ -134,117 +150,10 @@ def main_menu(user_id):
 def not_joined_markup():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📢 Channel သို့သွားရန်", url=f"https://t.me/{CHANNEL_USERNAME.replace('@','')}"),
+        types.InlineKeyboardButton("📢 Channel သို့သွားရန်", url="https://t.me/starmobile63956"),
         types.InlineKeyboardButton("✅ Join ပြီးပါပြီ (စစ်ဆေးမည်)", callback_data="check_join")
     )
     return markup
-
-def require_channel_join(func):
-    def wrapper(message):
-        if not check_user_channel(message.from_user.id):
-            text = "⚠️ ဤစနစ်ကို အသုံးပြုရန်အတွက် ကျေးဇူးပြု၍ Channel ကို အရင် Join ပေးပါ။"
-            bot.send_message(message.chat.id, text, reply_markup=not_joined_markup(), parse_mode="Markdown")
-            return
-        return func(message)
-    return wrapper
-
-# ----------------------------------------------------
-# 👑 ADMIN FUNCTIONS (Backup, Recover, Add Numbers)
-# ----------------------------------------------------
-
-# Database Backup ယူရန်
-@bot.message_handler(commands=['backup'])
-def backup_database(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        with open('vip_shop.db', 'rb') as db_file:
-            bot.send_document(
-                message.chat.id, 
-                db_file, 
-                caption="📦 ဤသည်မှာ လက်ရှိ Database Backup ဖိုင်ဖြစ်ပါသည်။\n\nပြန်လည် Recover လုပ်လိုပါက ဤဖိုင်ကို Bot ထံသို့ ပြန်လည်ပေးပို့နိုင်ပါသည်။"
-            )
-    except Exception as e:
-        bot.reply_to(message, f"❌ Backup ယူရာတွင် အမှားဖြစ်နေပါသည် - {e}")
-
-# Database ပြန်တင်ရန် (Recover)
-@bot.message_handler(content_types=['document'])
-def recover_database(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    if message.document.file_name == 'vip_shop.db':
-        try:
-            bot.reply_to(message, "⏳ Database ကို Recover လုပ်နေပါသည်... ခဏစောင့်ပါ။")
-            file_info = bot.get_file(message.document.file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
-            
-            with open('vip_shop.db', 'wb') as new_file:
-                new_file.write(downloaded_file)
-                
-            bot.reply_to(message, "✅ Database ကို အောင်မြင်စွာ ပြန်လည် Recover (Restore) လုပ်ပြီးပါပြီ။")
-        except Exception as e:
-            bot.reply_to(message, f"❌ Recover လုပ်ရာတွင် အမှားဖြစ်နေပါသည် - {e}")
-
-# ဖုန်းနံပါတ်အသစ် ထည့်သွင်းရန်
-@bot.message_handler(commands=['add'])
-def add_phone_command(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    text = message.text.replace('/add', '').strip()
-    if not text:
-        help_text = (
-            "📌 **ဖုန်းနံပါတ်ထည့်ရန် အောက်ပါ Format အတိုင်း ရိုက်ထည့်ပါ။**\n\n"
-            "`/add ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n\n"
-            "*(ဥပမာ: `/add 09 123-456-789, 50000, PRO`)*\n"
-            "*(အမျိုးအစား နေရာတွင် PRO သို့မဟုတ် LUCKY ဟုသာ ထည့်ပါ)*"
-        )
-        bot.reply_to(message, help_text, parse_mode="Markdown")
-        return
-        
-    try:
-        parts = text.split(',')
-        if len(parts) != 3:
-            bot.reply_to(message, "❌ ပုံစံမှားယွင်းနေပါသည်။ ဥပမာ: `/add 09 123-456-789, 50000, PRO`", parse_mode="Markdown")
-            return
-            
-        raw_phone = parts[0].strip()
-        price_str = parts[1].strip()
-        num_type = parts[2].strip().upper()
-        
-        clean_phone = raw_phone.replace(" ", "").replace("-", "")
-        
-        if num_type not in ["PRO", "LUCKY"]:
-            bot.reply_to(message, "❌ အမျိုးအစားသည် `PRO` သို့မဟုတ် `LUCKY` သာဖြစ်ရပါမည်။", parse_mode="Markdown")
-            return
-            
-        price = float(price_str)
-        operator = detect_operator(clean_phone)
-        
-        with sqlite3.connect('vip_shop.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)",
-                (clean_phone, operator, price, num_type)
-            )
-            conn.commit()
-        
-        success_text = (
-            f"✅ **ဖုန်းနံပါတ် အသစ်ထည့်သွင်းခြင်း အောင်မြင်ပါသည်။**\n\n"
-            f"📱 ဖုန်းနံပါတ်: `{clean_phone}`\n"
-            f"📡 Operator: {operator}\n"
-            f"💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n"
-            f"🏷️ အမျိုးအစား: {num_type}"
-        )
-        bot.reply_to(message, success_text, parse_mode="Markdown")
-        
-    except ValueError:
-        bot.reply_to(message, "❌ ဈေးနှုန်းနေရာတွင် ဂဏန်းသာ ထည့်ပါ။ ဥပမာ: 50000")
-    except Exception as e:
-        bot.reply_to(message, f"❌ အမှားဖြစ်နေပါသည်: {e}")
-
-# ----------------------------------------------------
-# 👤 USER FUNCTIONS
-# ----------------------------------------------------
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -280,11 +189,103 @@ def verify_join_callback(call):
     else:
         bot.answer_callback_query(call.id, "⚠️ ကျေးဇူးပြု၍ Channel ကို အရင် Join ပေးပါ။", show_alert=True)
 
+def require_channel_join(func):
+    def wrapper(message):
+        if not check_user_channel(message.from_user.id):
+            text = "⚠️ ဤစနစ်ကို အသုံးပြုရန်အတွက် ကျေးဇူးပြု၍ Channel ကို အရင် Join ပေးပါ။"
+            bot.send_message(message.chat.id, text, reply_markup=not_joined_markup(), parse_mode="Markdown")
+            return
+        return func(message)
+    return wrapper
+
+# ----------------------------------------------------
+# 🛡️ ADMIN COMMANDS (Backup, Restore, Broadcast, Add)
+# ----------------------------------------------------
+
+@bot.message_handler(commands=['backup'])
+def admin_backup(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        with open('vip_shop.db', 'rb') as f:
+            bot.send_document(message.chat.id, f, caption="📦 Database Backup ဖိုင်ရပါပြီ။")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Backup ယူရာတွင် အမှားဖြစ်နေပါသည်: {e}")
+
+@bot.message_handler(content_types=['document'])
+def admin_restore(message):
+    if message.from_user.id != ADMIN_ID: return
+    # Caption တွင် /restore ဟုရေးခဲ့လျှင် (သို့) bot ပို့သော ဖိုင်ကို /restore ဖြင့် reply ပြန်လျှင်
+    if message.caption == "/restore" or (message.reply_to_message and message.reply_to_message.document and message.text == "/restore"):
+        try:
+            file_info = bot.get_file(message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open('vip_shop.db', 'wb') as new_file:
+                new_file.write(downloaded_file)
+            bot.send_message(message.chat.id, "✅ Database ကို အောင်မြင်စွာ Restore လုပ်ပြီးပါပြီ။ (ပြောင်းလဲမှုများ သိသာရန် Bot ကို Restart ချပေးပါ)")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ Restore လုပ်ရာတွင် အမှားဖြစ်နေပါသည်: {e}")
+
+@bot.message_handler(commands=['broadcast'])
+def admin_broadcast(message):
+    if message.from_user.id != ADMIN_ID: return
+    text_to_send = message.text.replace("/broadcast", "").strip()
+    if not text_to_send:
+        bot.send_message(message.chat.id, "❌ ပေးပို့လိုသော စာသားကို ထည့်ပါ။\nဥပမာ: `/broadcast မင်္ဂလာပါ`", parse_mode="Markdown")
+        return
+        
+    with sqlite3.connect('vip_shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users")
+        users = cursor.fetchall()
+        
+    bot.send_message(message.chat.id, "⏳ Broadcast စတင်နေပါပြီ...")
+    success = 0
+    for u in users:
+        try:
+            bot.send_message(u[0], text_to_send)
+            success += 1
+        except Exception:
+            pass
+    bot.send_message(message.chat.id, f"✅ စုစုပေါင်း လူ {success} ဦးထံသို့ Message ပေးပို့ပြီးပါပြီ။")
+
+@bot.message_handler(commands=['addnum'])
+def admin_add_number(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        data = message.text.replace("/addnum", "").strip()
+        parts = data.split(',')
+        if len(parts) != 3:
+            bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။ Comma (,) ခံ၍ရေးပါ။\nFormat: `/addnum ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\nဥပမာ: `/addnum 09 777 888 999, 150000, PRO`", parse_mode="Markdown")
+            return
+            
+        raw_phone = parts[0]
+        price = float(parts[1].strip())
+        num_type = parts[2].strip().upper()
+        
+        # Space များပါပါက အလိုလျောက်ဖြုတ်ပေးမည်
+        phone = ''.join(filter(str.isdigit, raw_phone))
+        op = detect_operator(phone)
+        
+        with sqlite3.connect('vip_shop.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, num_type))
+            conn.commit()
+            
+        bot.send_message(message.chat.id, f"✅ နံပါတ်အသစ် ထည့်သွင်းပြီးပါပြီ။\n\n📱 <b>Phone:</b> {phone}\n📡 <b>Operator:</b> {op}\n💰 <b>Price:</b> {price:,.0f}\n✨ <b>Type:</b> {num_type}", parse_mode="HTML")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ အမှားဖြစ်နေပါသည်: {e}")
+
+# ----------------------------------------------------
+# 🛍️ USER SHOPPING LOGIC
+# ----------------------------------------------------
+
+# ✨ နံပါတ်လှများ ပြသခြင်း (Pagination ဖြင့်)
 @bot.message_handler(func=lambda m: m.text == "✨ နံပါတ်လှများကြည့်မည်")
 @require_channel_join
 def show_pro_numbers(message):
     send_paginated_numbers(message.chat.id, "PRO", 0, is_edit=False, message_id=None)
 
+# 🍀 Lucky Phone ပြသခြင်း (Pagination ဖြင့်)
 @bot.message_handler(func=lambda m: m.text == "🍀 Lucky Phone ကြည့်မည်")
 @require_channel_join
 def show_lucky_numbers(message):
@@ -320,6 +321,7 @@ def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None
         btn_text = f"📱 {phone} ({op}) - {price:,.0f} ကျပ်"
         markup.add(types.InlineKeyboardButton(btn_text, callback_data=f"buy_{n_id}"))
 
+    # Pagination ခလုတ်များ
     nav_buttons = []
     if page > 0:
         nav_buttons.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data=f"page_{n_type}_{page-1}"))
@@ -345,6 +347,7 @@ def handle_pagination(call):
     page = int(parts[2])
     send_paginated_numbers(call.message.chat.id, n_type, page, is_edit=True, message_id=call.message.message_id)
 
+# 📡 Operator အလိုက် ခွဲခြားပြခြင်း
 @bot.message_handler(func=lambda m: m.text == "📡 Operator အလိုက်ကြည့်မည်")
 @require_channel_join
 def show_operators(message):
@@ -370,7 +373,7 @@ def filter_by_operator(call):
         rows = cursor.fetchall()
 
     if not rows:
-        bot.answer_callback_query(call.id, f"{op_name} နံပါတ်များ လောလောဆယ် မရှိသေးပါ။", show_alert=True)
+        bot.answer_callback_query(call.id, f"{op_name} နံပါတ်များ လောလောဆယ် မရှိသေးပါ။")
         return
 
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -382,6 +385,7 @@ def filter_by_operator(call):
             
     bot.edit_message_text(f"📡 *{op_name}* ရရှိနိုင်သော နံပါတ်များ -", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
+# 💰 ဈေးနှုန်းအလိုက် ရှာဖွေခြင်း (Price Filter)
 @bot.message_handler(func=lambda m: m.text == "💰 ဈေးနှုန်းအလိုက် ရှာမည်")
 @require_channel_join
 def price_filter_menu(message):
@@ -422,6 +426,7 @@ def filter_by_price(call):
 
     bot.edit_message_text("💰 ရွေးချယ်ထားသော ဈေးနှုန်းအတွင်းရှိ နံပါတ်များ -", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
+# 🔍 နံပါတ်ရှာဖွေခြင်း
 @bot.message_handler(func=lambda m: m.text == "🔍 နံပါတ်ရှာမည်")
 @require_channel_join
 def search_number(message):
@@ -430,10 +435,6 @@ def search_number(message):
 
 def process_search(message):
     if not check_user_channel(message.from_user.id):
-        return
-        
-    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "💰 ဈေးနှုန်းအလိုက် ရှာမည်", "📦 ကျွန်ုပ်၏ အော်ဒါများ"]:
-        bot.send_message(message.chat.id, "ရှာဖွေမှုကို ပယ်ဖျက်လိုက်ပါသည်။")
         return
 
     keyword = message.text.strip()
@@ -455,6 +456,7 @@ def process_search(message):
     
     bot.send_message(message.chat.id, f"🔍 `{keyword}` ပါဝင်သော နံပါတ်များ -", reply_markup=markup, parse_mode="Markdown")
 
+# 📦 ကျွန်ုပ်၏ အော်ဒါများ (My Orders & Cancel)
 @bot.message_handler(func=lambda m: m.text == "📦 ကျွန်ုပ်၏ အော်ဒါများ" or m.text == "/myorders")
 @require_channel_join
 def show_my_orders(message):
@@ -478,12 +480,4 @@ def show_my_orders(message):
             f"💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်\n"
             f"📍 **လိပ်စာ:** {contact_info}\n"
             f"📅 **ရက်စွဲ:** {date}\n"
-            f"📌 **အခြေအနေ:** ဆောင်ရွက်ဆဲ (Pending)"
-        )
-        
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("❌ ဤအော်ဒါကို ဖျက်သိမ်းမည် (Cancel)", callback_data=f"user_cancel_ord_{o_id}"))
-        
-        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda 
+            f"📌 **အခြေအနေ:** ဆောင်
