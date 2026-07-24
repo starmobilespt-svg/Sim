@@ -39,17 +39,16 @@ server_thread = threading.Thread(target=run_web_server)
 server_thread.daemon = True
 server_thread.start()
 
-# ၁၅ မိနစ်တစ်ခါ မအိပ်သွားစေရန် Self-Ping လုပ်ပေးမည့် စနစ်
+# ၁၄ မိနစ်တစ်ခါ မအိပ်သွားစေရန် Self-Ping လုပ်ပေးမည့် စနစ်
 def keep_alive_ping():
-    time.sleep(10) # Server တက်လာသည်အထိ ခေတ္တစောင့်မည်
+    time.sleep(10)  # Server တက်လာသည်အထိ ခေတ္တစောင့်မည်
     while True:
         try:
-            # Render App URL သို့မဟုတ် Local Host သို့ လှမ်း Ping ပါမည်
             requests.get(f"http://127.0.0.1:{PORT}")
             logging.info("Keep-alive ping sent successfully.")
         except Exception as e:
             logging.error(f"Keep-alive ping failed: {e}")
-        time.sleep(14 * 60) # ၁၄ မိနစ်ခြားတစ်ခါ Ping မည်
+        time.sleep(14 * 60)  # ၁၄ မိနစ်ခြားတစ်ခါ Ping မည်
 
 ping_thread = threading.Thread(target=keep_alive_ping)
 ping_thread.daemon = True
@@ -481,4 +480,5 @@ def show_my_orders(message):
             f"📱 **မှာယူသည့်နံပါတ်:** `{phone}`\n"
             f"💰 **ကျသင့်ငွေ:** `{price:,.0f}` ကျပ်\n"
             f"📍 **လိပ်စာ:** {contact_info}\n"
-         
+            f"📅 **ရက်စွဲ:** {date}\n"
+            f"📌 **အခြေအနေ:** ဆောင်ရွက်ဆ
