@@ -130,6 +130,8 @@ def require_channel_join(func):
 def show_admin_panel(message):
     if message.from_user.id != ADMIN_ID: return
     text = "👑 **Admin Control Panel**\n\n" + \
+           "👤 Admin Acc: @orange310199\n" + \
+           "📞 Admin Phone: 09 79 50 96 484\n\n" + \
            "အောက်ပါ Button များမှတစ်ဆင့် လွယ်ကူစွာ စီမံခန့်ခွဲနိုင်ပါသည်။\n\n" + \
            "📌 **နံပါတ်အသစ်ထည့်ရန် (Command):**\n" + \
            "`/addnum ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
@@ -247,7 +249,6 @@ def callback_admin_start_restore(call):
 @bot.message_handler(content_types=['document'])
 def admin_handle_document(message):
     if message.from_user.id != ADMIN_ID: return
-    # Restore ခလုတ်နှိပ်ထားလျှင် သို့မဟုတ် Caption တွင် /restore ပါလျှင်
     if waiting_for_restore.get(ADMIN_ID) or message.caption == "/restore":
         try:
             fi = bot.get_file(message.document.file_id)
@@ -298,8 +299,8 @@ def admin_add_number(message):
 @bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
 def contact_shop(message):
     text = "📞 **Star Mobile VIP Shop**\n\n" + \
-           "💬 Telegram Admin: @starmobile63956\n" + \
-           "📱 ဖုန်းနံပါတ်: 09795096484 / 09792654163\n" + \
+           "💬 Admin Acc: @orange310199\n" + \
+           "📱 ဖုန်းနံပါတ်: 09 79 50 96 484\n" + \
            "⏰ အလုပ်ချိန်: မနက် ၉ နာရီ မှ ည ၉ နာရီအထိ"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
