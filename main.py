@@ -225,7 +225,13 @@ def admin_complete_order(call):
             
             phone_txt = str(phone)
             bot.answer_callback_query(call.id, "အော်ဒါ ပြီးစီးကြောင်း မှတ်သားလိုက်ပါပြီ။", show_alert=True)
-            bot.edit_message_text(f"✅ **အော်ဒါ #ORD-{oid:03d} ကို အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            
+            try:
+                if call.message.photo:
+                    bot.edit_message_caption(caption=call.message.caption + "\n\n✅ **[အော်ဒါ ပြီးစီးပါပြီ (Completed)]**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+                else:
+                    bot.edit_message_text(f"✅ **အော်ဒါ #ORD-{oid:03d} ကို အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            except Exception: pass
             
             try:
                 msg = "🎉 **ဝမ်းသာစရာ သတင်းပါခင်ဗျာ!**\n\nလူကြီးမင်း၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + phone_txt + "`) ကို ဆိုင်မှ အောင်မြင်စွာ ပို့ဆောင်ပေးလိုက်ပါပြီ။\n\nအားပေးမှုကို အထူးကျေးဇူးတင်ရှိပါသည်။ 🙏"
@@ -233,7 +239,6 @@ def admin_complete_order(call):
             except Exception: 
                 pass
 
-# 📌 အော်ဒါ Cancel ပြုလုပ်သည့်အခါ နှစ်ဖက်လုံးတွင် အသိပေးပြသခြင်း
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_cancel_ord_"))
 def admin_cancel_order(call):
     if call.from_user.id != ADMIN_ID: return
@@ -251,7 +256,6 @@ def admin_cancel_order(call):
             phone_txt = str(phone)
             bot.answer_callback_query(call.id, "အော်ဒါကို ပယ်ဖျက်လိုက်ပါပြီ။", show_alert=True)
             
-            # Admin ဘက်တွင် ပုံဖြစ်ပါက caption ပြောင်းမည်၊ စာဖြစ်ပါက text ပြောင်းမည်
             try:
                 if call.message.photo:
                     bot.edit_message_caption(caption=call.message.caption + "\n\n❌ **[ဤအော်ဒါကို Cancel လိုက်ပါပြီ]**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
@@ -259,7 +263,6 @@ def admin_cancel_order(call):
                     bot.edit_message_text(f"❌ **အော်ဒါ #ORD-{oid:03d} ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             except Exception: pass
             
-            # ဝယ်သူ (User) ဘက်သို့ အကြောင်းကြားစာ ပို့မည်
             try:
                 bot.send_message(user_id, f"⚠️ တောင်းပန်အပ်ပါသည်။\n\nသင်၏ အော်ဒါ #ORD-{oid:03d} (`{phone_txt}`) ကို Admin မှ ပယ်ဖျက် (Cancel) လိုက်ပါသည်။")
             except Exception: pass
@@ -881,11 +884,34 @@ def admin_reject_digital_order(call):
         bot.send_message(user_id, "⚠️ တောင်းပန်ပါတယ်၊ သင်တင်ပြလာသော ငွေလွှဲပြေစာ (SS) မမှန်ကန်ပါသဖြင့် အော်ဒါကို ပယ်ချလိုက်ပါသည်။")
     except Exception: pass
 
+# 📌 ဖုန်းနံပါတ်ကြည့်ပြီး cancel နှိပ်ပါက ပထမအတိုင်း နံပါတ်စာရင်းကို ပထမစာမျက်နှာဖြင့် ပြန်လည်ပြသပေးမည်
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
 def user_cancel_buy(call):
     bot.answer_callback_query(call.id)
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
-    bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
+    
+    # ပစ္စည်းအမျိုးအစား (PRO, LUCKY) ကို ခွဲခြားပြီး ပထမစာရင်းစာမျက်နှာကို ပြန်ပြမည်
+    with sqlite3.connect('vip_shop.db') as conn:
+        c = conn.cursor()
+        nid = call.data.replace("cancel_buy_", "")
+        if nid.isdigit():
+            item = c.execute("SELECT num_type, operator FROM numbers WHERE id=?", (int(nid),)).fetchone()
+            if item:
+                ntype = item[0]
+                op = item[1]
+                if ntype in ["PRO", "LUCKY"]:
+                    send_paginated_numbers(call.message.chat.id, ntype, 0, is_edit=True, message_id=call.message.message_id)
+                    return
+                elif ntype in ["DIGITAL_AUTO", "DIGITAL_MANUAL"]:
+                    send_paginated_digital(call.message.chat.id, 0, is_edit=True, message_id=call.message.message_id)
+                    return
+                else:
+                    send_paginated_operators(call.message.chat.id, op, 0, is_edit=True, message_id=call.message.message_id)
+                    return
+                    
+    # အကြောင်းပြချက် မတွေ့ပါက ပင်မစာရင်း သို့မဟုတ် မာစတာမီနူးသို့ ပို့မည်
+    bot.edit_message_text("ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", call.message.chat.id, call.message.message_id)
+    bot.send_message(call.message.chat.id, "✨ *VIP Shop Bot မှ ကြိုဆိုပါတယ်။*", reply_markup=main_menu(call.from_user.id), parse_mode="Markdown")
 
 # 🚀 Bot စတင် Run ရန်
 print("Bot is running...")
