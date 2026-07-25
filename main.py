@@ -13,6 +13,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
 ADMIN_ID = 8668319365
+# 📌 Channel ကို Join မှ သုံးခွင့်ပေးမည့် Channel Username (ဒါကိုတော့ မူရင်းအတိုင်း ထားထားပါသည်)
 CHANNEL_USERNAME = "@starmobile63956"
 ITEMS_PER_PAGE = 10
 
@@ -93,7 +94,7 @@ def main_menu(user_id):
 def not_joined_markup():
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📢 Channel သို့သွားရန်", url="https://t.me/starmobile63956"),
+        types.InlineKeyboardButton("📢 Channel သို့သွားရန်", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"),
         types.InlineKeyboardButton("✅ Join ပြီးပါပြီ (စစ်ဆေးမည်)", callback_data="check_join")
     )
     return markup
@@ -198,7 +199,6 @@ def admin_view_orders(call):
     bot.answer_callback_query(call.id)
     for r in rows:
         phone_txt = str(r[2])
-        # 📌 ဝယ်သူ၏ နာမည်ကို နှိပ်လျှင် Account သို့ ရောက်စေရန် ပြင်ဆင်ထားသည်
         user_link = f"[{str(r[1])}](tg://user?id={r[5]})"
         
         txt = f"📦 **အော်ဒါနံပါတ်:** #ORD-{r[0]:03d}\n"
@@ -436,8 +436,9 @@ def admin_add_acc(message):
 # 📞 ဆိုင်နှင့် ဆက်သွယ်ရန်
 @bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
 def contact_shop(message):
+    # 📌 Admin Telegram Username အမှန်ကို ပြောင်းလဲထားသည်
     text = "📞 **Star Mobile VIP Shop**\n\n" + \
-           "💬 Telegram Admin: @starmobile63956\n" + \
+           "💬 Telegram Admin: @orange310199\n" + \
            "📱 ဖုန်းနံပါတ်: 09 7950 96484 / 09 7926 54163\n" + \
            "⏰ အလုပ်ချိန်: မနက် ၉ နာရီ မှ ည ၉ နာရီအထိ"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
@@ -589,20 +590,19 @@ def confirm_digital_buy(call):
         price = item[1]
         
         c = conn.cursor()
-        # 📌 DIGITAL ACC ဖြစ်သောကြောင့် UPDATE numbers SET status='SOLD' ကို မလုပ်ပါ။ (အမြဲတမ်း ဆက်ပြထားမည်)
         c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, "Digital Account (Telegram မှ ဆက်သွယ်မည်)", nid))
         conn.commit()
         oid = c.lastrowid
         
     bot.answer_callback_query(call.id, "ဝယ်ယူရန် ရွေးချယ်မှု အောင်မြင်ပါသည်။")
     
+    # 📌 Admin Telegram Username အမှန်ကို ပြောင်းလဲထားသည်
     txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
     txt += f"🎮 **အကောင့်:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n"
-    txt += "💬 **ငွေပေးချေရန်နှင့် အကောင့်ရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @starmobile63956 သို့ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
+    txt += "💬 **ငွေပေးချေရန်နှင့် အကောင့်ရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @orange310199 သို့ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
     
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
     
-    # 📌 Admin ထံ Notification ပို့ခြင်း (ဝယ်သူနာမည်ကို နှိပ်လျှင် Account သို့ ရောက်မည်)
     try:
         user_link = f"[{fname}](tg://user?id={uid})"
         bot.send_message(ADMIN_ID, f"🔔 **Digital အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n(ဝယ်သူမှ Telegram တွင် လာရောက်ဆက်သွယ်ပါမည်။)", parse_mode="Markdown")
@@ -629,7 +629,6 @@ def save_order(message, phone, price, nid):
         oid = c.lastrowid
     bot.send_message(message.chat.id, "✅ အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။ (#ORD-" + "{:03d}".format(oid) + ")")
     
-    # 📌 Admin ထံ Notification ပို့ခြင်း (ဝယ်သူနာမည်ကို နှိပ်လျှင် Account သို့ ရောက်မည်)
     try:
         phone_txt = str(phone)
         user_link = f"[{fname}](tg://user?id={uid})"
