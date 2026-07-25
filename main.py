@@ -207,7 +207,7 @@ def admin_view_orders(call):
             types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data="admin_comp_ord_" + str(r[0])),
             types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data="admin_cancel_ord_" + str(r[0]))
         )
-        bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_comp_ord_"))
 def admin_complete_order(call):
@@ -233,6 +233,7 @@ def admin_complete_order(call):
             except Exception: 
                 pass
 
+# 📌 အော်ဒါ Cancel ပြုလုပ်သည့်အခါ နှစ်ဖက်လုံးတွင် အသိပေးပြသခြင်း
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_cancel_ord_"))
 def admin_cancel_order(call):
     if call.from_user.id != ADMIN_ID: return
@@ -249,8 +250,16 @@ def admin_cancel_order(call):
             
             phone_txt = str(phone)
             bot.answer_callback_query(call.id, "အော်ဒါကို ပယ်ဖျက်လိုက်ပါပြီ။", show_alert=True)
-            bot.edit_message_text(f"❌ **အော်ဒါ #ORD-{oid:03d} ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             
+            # Admin ဘက်တွင် ပုံဖြစ်ပါက caption ပြောင်းမည်၊ စာဖြစ်ပါက text ပြောင်းမည်
+            try:
+                if call.message.photo:
+                    bot.edit_message_caption(caption=call.message.caption + "\n\n❌ **[ဤအော်ဒါကို Cancel လိုက်ပါပြီ]**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
+                else:
+                    bot.edit_message_text(f"❌ **အော်ဒါ #ORD-{oid:03d} ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            except Exception: pass
+            
+            # ဝယ်သူ (User) ဘက်သို့ အကြောင်းကြားစာ ပို့မည်
             try:
                 bot.send_message(user_id, f"⚠️ တောင်းပန်အပ်ပါသည်။\n\nသင်၏ အော်ဒါ #ORD-{oid:03d} (`{phone_txt}`) ကို Admin မှ ပယ်ဖျက် (Cancel) လိုက်ပါသည်။")
             except Exception: pass
@@ -271,9 +280,10 @@ def admin_cancel_command(message):
                 c.execute("UPDATE orders SET status='CANCELLED' WHERE id=?", (oid,))
                 conn.commit()
                 
+                phone_txt = str(phone)
                 bot.send_message(message.chat.id, f"✅ အော်ဒါ #ORD-{oid:03d} ကို အောင်မြင်စွာ Cancel လုပ်လိုက်ပါပြီ။")
                 try:
-                    bot.send_message(user_id, f"⚠️ တောင်းပန်အပ်ပါသည်။\n\nသင်၏ အော်ဒါ #ORD-{oid:03d} (`{phone}`) ကို Admin မှ ပယ်ဖျက် (Cancel) လိုက်ပါသည်။")
+                    bot.send_message(user_id, f"⚠️ တောင်းပန်အပ်ပါသည်။\n\nသင်၏ အော်ဒါ #ORD-{oid:03d} (`{phone_txt}`) ကို Admin မှ ပယ်ဖျက် (Cancel) လိုက်ပါသည်။")
                 except Exception: pass
             else:
                 bot.send_message(message.chat.id, "❌ ဤအော်ဒါနံပါတ် မရှိပါ (သို့မဟုတ်) PENDING အခြေအနေမဟုတ်ပါ။")
@@ -365,14 +375,14 @@ def callback_admin_backup(call):
             bot.send_document(call.message.chat.id, f, caption="📦 Database Backup ဖိုင်ရပါပြီ။")
             bot.answer_callback_query(call.id, "Backup ဖိုင် ပို့ပေးလိုက်ပါပြီ။")
     except Exception as e:
-        bot.send_message(call.message.chat.id, "❌ Error: " + str(e))
+        bot.send_message(message.chat.id, "❌ Error: " + str(e))
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_start_restore")
 def callback_admin_start_restore(call):
     if call.from_user.id != ADMIN_ID: return
     waiting_for_restore[ADMIN_ID] = True
     bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
+    bot.send_message(message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['document'])
 def admin_handle_document(message):
@@ -610,7 +620,6 @@ def handle_op_pagination(call):
     p = call.data.split("_")
     send_paginated_operators(call.message.chat.id, p[1], int(p[2]), True, call.message.message_id)
 
-# 📌 စာရင်းထဲမှ ပစ္စည်းတစ်ခုခုကို နှိပ်လိုက်သည့်အခါ (selectitem_ သို့ ပြောင်းထားပါသည်)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("selectitem_"))
 def process_buy(call):
     bot.answer_callback_query(call.id)
@@ -666,7 +675,6 @@ def process_buy(call):
             bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
         
     else:
-        # 📌 ရိုးရိုးဖုန်းနံပါတ်များအတွက် "✅ ဝယ်ယူမည်" ခလုတ်
         markup.add(
             types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)),
             types.InlineKeyboardButton("✅ ဝယ်ယူမည်", callback_data="confirm_buy_phone_" + str(nid))
@@ -679,7 +687,6 @@ def process_buy(call):
         except Exception:
             bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
 
-# 📌 "✅ ဝယ်ယူမည်" နှိပ်လိုက်ပါက လိပ်စာတောင်းခံမည့် ခလုတ် Handler (အမည်ပြောင်းလဲထားသည်)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_buy_phone_"))
 def confirm_buy_phone_action(call):
     bot.answer_callback_query(call.id)
