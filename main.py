@@ -4,10 +4,8 @@ import telebot
 from telebot import types
 import math
 import logging
-import threading
-from flask import Flask
-import time
 import requests
+from flask import Flask, request
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -22,29 +20,23 @@ admin_states = {}
 user_topup_amounts = {}
 waiting_for_restore = {}
 
-# 🌐 Flask Server & Keep Alive Ping (Render Free 24/7 Run ရန်)
+# 🌐 Flask Server Setup for Webhook (Render Free 24/7 Run ရန်)
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 10000))
 
 @app.route('/')
 def home():
-    return "VIP Bot Running 24/7"
+    return "VIP Bot Running 24/7 via Webhook"
 
-def run_web_server():
-    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
-
-threading.Thread(target=run_web_server, daemon=True).start()
-
-def keep_alive_ping():
-    time.sleep(10)
-    while True:
-        try:
-            requests.get("http://127.0.0.1:" + str(PORT))
-        except Exception:
-            pass
-        time.sleep(14 * 60)
-
-threading.Thread(target=keep_alive_ping, daemon=True).start()
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "!", 200
+    else:
+        return "Forbidden", 403
 
 # 🗄️ Database တည်ဆောက်ခြင်း
 def init_db():
@@ -81,7 +73,7 @@ def check_user_channel(user_id):
         m = bot.get_chat_member(CHANNEL_USERNAME, user_id)
         if m.status in ['member', 'administrator', 'creator']: return True
     except Exception: 
-        # Bot သည် Channel တွင် Admin မဖြစ်ပါက သို့မဟုတ် Error တက်ပါက Bot အလုပ်မရပ်သွားစေရန် True ပေး၍ ကျော်သွားမည်
+        # Error တက်ပါက (သို့မဟုတ် Bot Admin မဖြစ်သေးပါက) ဝယ်သူများ အဆင်ပြေစွာ ဆက်သုံးနိုင်ရန် True ပေးမည်
         return True
     return False
 
@@ -399,7 +391,7 @@ def admin_sales_report(call):
             m_total = r[2] if r[2] else 0
             text += f"🔹 **{month_str}** : {m_total:,.0f} ကျပ် ({count} ခု)\n"
             
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_view_orders")
 def admin_view_orders(call):
@@ -764,7 +756,7 @@ def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
         phone_txt = str(r[1])
-        markup.add(types.InlineKeyboardButton(f"{phone_txt} ({r[2]}) - {r[3]:,.0f} ကျပ်", callback_data="buy_" + str(r[0])))
+        markup.add(types.InlineKeyboardButton(f"{phone_txt} - {r[2]:,.0f} ကျပ်", callback_data="buy_" + str(r[0])))
 
     nav = []
     if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data="page_" + n_type + "_" + str(page-1)))
@@ -858,6 +850,7 @@ def process_buy(call):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     
+    # ဖုန်းနံပါတ်များအတွက် Point ဖြင့် ငွေချေခွင့်မပြုပါ (Digital များအတွက်သာ ပေးမည်)
     if balance >= price and ntype in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']:
         if ntype == 'DIGITAL_AUTO':
             markup.add(types.InlineKeyboardButton("💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည်", callback_data=f"paypoints_auto_{nid}"))
@@ -916,9 +909,9 @@ def confirm_digital_manual_buy(call):
         
     bot.answer_callback_query(call.id, "ဝယ်ယူရန် ရွေးချယ်မှု အောင်မြင်ပါသည်။")
     
-    txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
-    txt += f"🎮 **အကောင့်/ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n"
-    txt += "💬 **ငွေပေးချေရန်နှင့် ဝန်ဆောင်မှုရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @orange310199 သို့ ငွေလွှဲ SS နှင့်အတူ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
+    txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
+          f"🎮 **အကောင့်/ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n" \
+          f"💬 **ငွေပေးချေရန်နှင့် ဝန်ဆောင်မှုရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @orange310199 သို့ ငွေလွှဲ SS နှင့်အတူ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
     
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
     
@@ -936,7 +929,7 @@ def confirm_digital_manual_buy(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("prompt_digi_ss_"))
 def prompt_digi_ss(call):
     nid = int(call.data.split("_")[3])
-    msg = bot.send_message(call.message.chat.id, "🖼️ ကျေးဇူးပြု၍ ငွေလွှဲထားသော Screenshot (SS) ပုံကို ပို့ပေးပါ။")
+    msg = bot.send_message(call.message.chat.id, "🖼️ ကျေးဇူးပြု၍ ငွေလွှဲထားသော Screenshot (SS) ပုံ ကို ပို့ပေးပါ။")
     bot.register_next_step_handler(msg, receive_digi_order_ss, nid)
 
 def receive_digi_order_ss(message, nid):
@@ -998,10 +991,10 @@ def admin_approve_digital_order(call):
     bot.edit_message_caption(caption=call.message.caption + "\n\n✅ **[ခွင့်ပြုပြီး အကောင့်ပို့ပြီးပါပြီ]**", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown")
     
     try:
-        txt = f"🎉 **ဝယ်ယူမှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
-        txt += f"🎮 **အကောင့်:** {phone}\n"
-        txt += f"🔑 **အချက်အလက် (Account Info):**\n`{digi_info}`\n\n"
-        txt += f"ကျေးဇူးတင်ပါတယ်။ အချက်အလက်များကို Copy ကူးယူနိုင်ပါပြီ။"
+        txt = f"🎉 **ဝယ်ယူမှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
+              f"🎮 **အကောင့်:** {phone}\n" \
+              f"🔑 **အချက်အလက် (Account Info):**\n`{digi_info}`\n\n" \
+              f"ကျေးဇူးတင်ပါတယ်။ အချက်အလက်များကို Copy ကူးယူနိုင်ပါပြီ။"
         bot.send_message(user_id, txt, parse_mode="Markdown")
     except Exception: pass
 
@@ -1050,10 +1043,10 @@ def pay_points_auto(call):
         
     bot.answer_callback_query(call.id, "Points ဖြင့် ငွေချေမှု အောင်မြင်ပါသည်။")
     
-    txt = f"🎉 **ဝယ်ယူမှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
-    txt += f"🎮 **အကောင့်:** {phone}\n"
-    txt += f"🔑 **အချက်အလက် (Account Info):**\n`{digi_info}`\n\n"
-    txt += f"ကျေးဇူးတင်ပါတယ်။ အချက်အလက်များကို Copy ကူးယူနိုင်ပါပြီ။"
+    txt = f"🎉 **ဝယ်ယူမှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
+          f"🎮 **အကောင့်:** {phone}\n" \
+          f"🔑 **အချက်အလက် (Account Info):**\n`{digi_info}`\n\n" \
+          f"ကျေးဇူးတင်ပါတယ်။ အချက်အလက်များကို Copy ကူးယူနိုင်ပါပြီ။"
     
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
     
@@ -1092,9 +1085,9 @@ def pay_points_manual(call):
         
     bot.answer_callback_query(call.id, "Points ဖြင့် ငွေချေမှု အောင်မြင်ပါသည်။")
     
-    txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
-    txt += f"🎮 **ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ် (Points မှ ဖြတ်တောက်ပြီးပါပြီ)\n\n"
-    txt += f"💬 ကျေးဇူးပြု၍ Admin 👉 @orange310199 ထံသို့ Message ပို့၍ ဝန်ဆောင်မှုရယူပါ။"
+    txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
+          f"🎮 **ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ် (Points မှ ဖြတ်တောက်ပြီးပါပြီ)\n\n" \
+          f"💬 ကျေးဇူးပြု၍ Admin 👉 @orange310199 ထံသို့ Message ပို့၍ ဝန်ဆောင်မှုရယူပါ။"
     
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
     
@@ -1128,9 +1121,9 @@ def save_order(message, phone, price, nid):
         conn.commit()
         oid = c.lastrowid
         
-    success_txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
-    success_txt += f"💬 ကျေးဇူးပြု၍ ငွေလွှဲပြေစာ (Screenshot) ကို Admin 👉 @orange310199 ထံသို့ ပေးပို့ပေးပါ။\n"
-    success_txt += f"⏱ Admin မှ အမြန်ဆုံး ပြန်လည်အကြောင်းပြန်ပေးပါမည်။ ကျေးဇူးတင်ပါတယ်။"
+    success_txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
+                  f"💬 ကျေးဇူးပြု၍ ငွေလွှဲပြေစာ (Screenshot) ကို Admin 👉 @orange310199 ထံသို့ ပေးပို့ပေးပါ။\n" \
+                  f"⏱ Admin မှ အမြန်ဆုံး ပြန်လည်အကြောင်းပြန်ပေးပါမည်။ ကျေးဇူးတင်ပါတယ်။"
     bot.send_message(message.chat.id, success_txt, parse_mode="Markdown")
     
     try:
@@ -1147,12 +1140,15 @@ def save_order(message, phone, price, nid):
     except Exception:
         pass
 
-# 🚀 Bot စတင် Run ရန်
-print("Bot is running...")
+# 🚀 Render အတွက် Webhook ချိတ်ဆက်မှုနှင့် Flask App စတင်ခြင်း
+def set_bot_webhook():
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if render_url:
+        bot.remove_webhook()
+        time.sleep(1)
+        bot.set_webhook(url=f"{render_url}/{TOKEN}")
+        print(f"Webhook successfully set to: {render_url}/{TOKEN}")
+
 if __name__ == "__main__":
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=0, timeout=20)
-        except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(5)
+    set_bot_webhook()
+    app.run(host='0.0.0.0', port=PORT, debug=False)
