@@ -202,7 +202,7 @@ def admin_view_orders(call):
               "👤 **ဝယ်သူ:** " + str(r[1]) + " (ID: `" + str(r[5]) + "`)\n" + \
               "🛍 **မှာယူသည့်အရာ:** `" + phone_txt + "`\n" + \
               "💰 **ကျသင့်ငွေ:** " + "{:,.0f}".format(r[3]) + " ကျပ်\n" + \
-              "📍 **လိပ်စာ:** " + str(r[4])
+              "📍 **လိပ်စာ/အချက်အလက်:** " + str(r[4])
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
@@ -278,7 +278,6 @@ def show_delete_list(chat_id, page, is_edit=False, message_id=None):
         item_name = str(r[1])
         price_str = "{:,.0f}".format(r[2])
         ntype = str(r[3])
-        # 📌 နှိပ်လိုက်တာနဲ့ ဘယ်စာမျက်နှာကို ပြန်လာရမလဲဆိုတာ page parameter ထည့်ထားပေးတယ်
         btn_txt = f"🗑 {item_name} ({price_str} Ks) [{ntype}]"
         markup.add(types.InlineKeyboardButton(btn_txt, callback_data=f"admin_del_item_{r[0]}_{page}"))
         
@@ -306,7 +305,7 @@ def admin_delete_item_action(call):
     if call.from_user.id != ADMIN_ID: return
     parts = call.data.split("_")
     nid = int(parts[3])
-    page = int(parts[4]) # 📌 လက်ရှိ ဘယ်စာမျက်နှာမှာ ရောက်နေလဲဆိုတာ
+    page = int(parts[4])
     
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
@@ -314,10 +313,7 @@ def admin_delete_item_action(call):
         if num:
             c.execute("DELETE FROM numbers WHERE id=?", (nid,))
             conn.commit()
-            # 📌 ဖျက်လိုက်ကြောင်း ပြပေးပြီး ပျောက်သွားအောင် show_alert=False လုပ်ထားသည်
             bot.answer_callback_query(call.id, f"✅ '{num[0]}' ကို ဖျက်လိုက်ပါပြီ။", show_alert=False)
-            
-            # 📌 စာရင်းကို အလိုအလျောက် Refresh ပြန်လုပ်ပေးမည် (Message ပျောက်မသွားတော့ပါ)
             show_delete_list(call.message.chat.id, page, is_edit=True, message_id=call.message.message_id)
         else:
             bot.answer_callback_query(call.id, "ပစ္စည်း မတွေ့ရှိပါ။", show_alert=True)
@@ -328,7 +324,6 @@ def admin_delete_by_name(message):
     if message.from_user.id != ADMIN_ID: return
     item_name = message.text.replace("/del", "").strip()
     
-    # 📌 ဘာနာမည်မှ မရိုက်ဘဲ /del လို့သာ ရိုက်ရင် ပစ္စည်းတွေ အကုန်ပြပေးမည့် List ကို ခေါ်ပေးမည်
     if not item_name:
         show_delete_list(message.chat.id, 0, is_edit=False)
         return
@@ -543,27 +538,78 @@ def handle_op_pagination(call):
     p = call.data.split("_")
     send_paginated_operators(call.message.chat.id, p[1], int(p[2]), True, call.message.message_id)
 
+# 📌 ပစ္စည်းဝယ်ယူသည့် အပိုင်း (Digital Acc နှင့် ရိုးရိုးပစ္စည်း ခွဲခြားထားသည်)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def process_buy(call):
     nid = call.data.split("_")[1]
     with sqlite3.connect('vip_shop.db') as conn:
-        item = conn.cursor().execute("SELECT phone_number, price, status FROM numbers WHERE id=?", (nid,)).fetchone()
-    if not item or item[2] == 'SOLD':
+        item = conn.cursor().execute("SELECT phone_number, price, status, num_type FROM numbers WHERE id=?", (nid,)).fetchone()
+    
+    # ရိုးရိုးပစ္စည်း (ဖုန်းနံပါတ်များ) အတွက် SOLD ဖြစ်နေလျှင် မရနိုင်ကြောင်း ပြမည်
+    if not item or (item[2] == 'SOLD' and item[3] != 'DIGITAL'):
         bot.answer_callback_query(call.id, "ဤပစ္စည်း မရှိတော့ပါ။", show_alert=True)
         return
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
     
     phone_txt = str(item[0])
-    txt = "🎯 ရွေးချယ်ထားသောပစ္စည်း: " + phone_txt + "\n💰 ကျသင့်ငွေ: " + "{:,.0f}".format(item[1]) + " ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09 7950 96484\nWave: 09 7926 54163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
-    msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
-    bot.register_next_step_handler(msg, save_order, item[0], item[1], nid)
+    price = item[1]
+    ntype = str(item[3])
+    
+    markup = types.InlineKeyboardMarkup()
+    
+    # 📌 DIGITAL ACCOUNT ဝယ်ယူခြင်းဖြစ်ပါက
+    if ntype == "DIGITAL":
+        markup.add(
+            types.InlineKeyboardButton("✅ သေချာပါသည် ဝယ်ယူမည်", callback_data="confdigi_" + str(nid)),
+            types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid))
+        )
+        txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n⚠️ ဤအကောင့်ကို ဝယ်ယူရန် သေချာပါသလား?"
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        
+    # 📌 ရိုးရိုးဖုန်းနံပါတ် ဝယ်ယူခြင်းဖြစ်ပါက (Delivery ခ ပါမည်)
+    else:
+        markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
+        txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09 7950 96484\nWave: 09 7926 54163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
+        msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
+        bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
+
+# 📌 DIGITAL ACC သေချာကြောင်း နှိပ်လိုက်သောအခါ
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confdigi_"))
+def confirm_digital_buy(call):
+    nid = call.data.split("_")[1]
+    uid = call.from_user.id
+    fname = call.from_user.first_name
+    
+    with sqlite3.connect('vip_shop.db') as conn:
+        item = conn.cursor().execute("SELECT phone_number, price FROM numbers WHERE id=?", (nid,)).fetchone()
+        if not item: return
+        phone = item[0]
+        price = item[1]
+        
+        c = conn.cursor()
+        # 📌 DIGITAL ACC ဖြစ်သောကြောင့် UPDATE numbers SET status='SOLD' ကို မလုပ်ပါ။ (အမြဲတမ်း ဆက်ပြထားမည်)
+        c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, "Digital Account (Telegram မှ ဆက်သွယ်မည်)", nid))
+        conn.commit()
+        oid = c.lastrowid
+        
+    bot.answer_callback_query(call.id, "ဝယ်ယူရန် ရွေးချယ်မှု အောင်မြင်ပါသည်။")
+    
+    txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
+    txt += f"🎮 **အကောင့်:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n"
+    txt += "💬 **ငွေပေးချေရန်နှင့် အကောင့်ရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @starmobile63956 သို့ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
+    
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    
+    # 📌 Admin ထံ Notification ပို့ခြင်း
+    try:
+        bot.send_message(ADMIN_ID, f"🔔 **Digital အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {fname}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n(ဝယ်သူမှ Telegram တွင် လာရောက်ဆက်သွယ်ပါမည်။)", parse_mode="Markdown")
+    except Exception: pass
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
 def user_cancel_buy(call):
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
     bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
 
+# 📌 ရိုးရိုးဖုန်းနံပါတ် အော်ဒါသိမ်းဆည်းခြင်း
 def save_order(message, phone, price, nid):
     if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
         bot.send_message(message.chat.id, "❌ ပယ်ဖျက်လိုက်ပါသည်။")
