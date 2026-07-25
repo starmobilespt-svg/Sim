@@ -578,7 +578,6 @@ def process_buy(call):
               f"Kpay: `09 79 50 96 484` (Si Thu Aung)\n\n" \
               f"📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
         
-        # 📌 parse_mode="Markdown" ထည့်သွင်းထားသဖြင့် ` ` အတွင်းရှိစာသားများ Copy ကူးနိုင်မည်
         msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
 
@@ -618,7 +617,7 @@ def user_cancel_buy(call):
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
     bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
 
-# 📌 ရိုးရိုးဖုန်းနံပါတ် အော်ဒါသိမ်းဆည်းခြင်း
+# 📌 ရိုးရိုးဖုန်းနံပါတ် အော်ဒါသိမ်းဆည်းခြင်း (စာသားအသစ် ပြင်ဆင်ထားသည်)
 def save_order(message, phone, price, nid):
     if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
         bot.send_message(message.chat.id, "❌ ပယ်ဖျက်လိုက်ပါသည်။")
@@ -632,7 +631,12 @@ def save_order(message, phone, price, nid):
         c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, info, nid))
         conn.commit()
         oid = c.lastrowid
-    bot.send_message(message.chat.id, "✅ အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။ (#ORD-" + "{:03d}".format(oid) + ")")
+        
+    # 📌 ဝယ်သူထံသို့ အောင်မြင်ကြောင်း၊ SS ပို့ရန်နှင့် Admin အမြန်ဆုံး အကြောင်းပြန်မည့်အကြောင်း စာပို့ခြင်း
+    success_txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
+    success_txt += f"💬 ကျေးဇူးပြု၍ ငွေလွှဲပြေစာ (Screenshot) ကို Admin 👉 @orange310199 ထံသို့ ပေးပို့ပေးပါ။\n"
+    success_txt += f"⏱ Admin မှ အမြန်ဆုံး ပြန်လည်အကြောင်းပြန်ပေးပါမည်။ ကျေးဇူးတင်ပါတယ်။"
+    bot.send_message(message.chat.id, success_txt, parse_mode="Markdown")
     
     try:
         phone_txt = str(phone)
