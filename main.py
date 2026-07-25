@@ -284,10 +284,9 @@ def admin_add_balance(message):
             
         with sqlite3.connect('vip_shop.db') as conn:
             c = conn.cursor()
+            # 📌 User မရှိသေးပါက အလိုအလျောက် ထည့်ပေးမည် (Safety check)
+            c.execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, 'User', 0)", (target_uid,))
             user = c.execute("SELECT balance FROM users WHERE user_id=?", (target_uid,)).fetchone()
-            if not user:
-                bot.send_message(message.chat.id, "❌ ဤ User ID ကို မတွေ့ပါ။")
-                return
             
             new_bal = user[0] + amount
             c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, target_uid))
@@ -349,6 +348,8 @@ def admin_handle_state_input(message):
             
             with sqlite3.connect('vip_shop.db') as conn:
                 c = conn.cursor()
+                # 📌 User မရှိသေးပါက အလိုအလျောက် ထည့်ပေးမည် (Safety check)
+                c.execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, 'User', 0)", (target_uid,))
                 c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, target_uid))
                 conn.commit()
                 res = c.execute("SELECT balance FROM users WHERE user_id=?", (target_uid,)).fetchone()
@@ -395,7 +396,7 @@ def admin_sales_report(call):
             m_total = r[2] if r[2] else 0
             text += f"🔹 **{month_str}** : {m_total:,.0f} ကျပ် ({count} ခု)\n"
             
-    bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_view_orders")
 def admin_view_orders(call):
@@ -854,7 +855,6 @@ def process_buy(call):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     
-    # 📌 ဤနေရာတွင် ခလုတ်စာသားမှ ပမာဏ (Ks) ကို ဖယ်ရှားပေးလိုက်ပါပြီ
     if balance >= price and ntype in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']:
         if ntype == 'DIGITAL_AUTO':
             markup.add(types.InlineKeyboardButton("💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည်", callback_data=f"paypoints_auto_{nid}"))
