@@ -854,13 +854,12 @@ def process_buy(call):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     
-    if balance >= price:
+    # 📌 ဖုန်းနံပါတ်များ (PRO, LUCKY, Operator) ဖြစ်ပါက Point ဖြင့် ငွေချေသည့်ခလုတ် မပါဝင်စေဘဲ ငွေလွှဲစနစ်ဖြင့်သာ ဝယ်ယူစေမည်
+    if balance >= price and ntype in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']:
         if ntype == 'DIGITAL_AUTO':
             markup.add(types.InlineKeyboardButton(f"💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည် ({balance:,.0f} Ks)", callback_data=f"paypoints_auto_{nid}"))
         elif ntype == 'DIGITAL_MANUAL':
             markup.add(types.InlineKeyboardButton(f"💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည် ({balance:,.0f} Ks)", callback_data=f"paypoints_manual_{nid}"))
-        else:
-            markup.add(types.InlineKeyboardButton(f"💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည် ({balance:,.0f} Ks)", callback_data=f"paypoints_num_{nid}"))
             
     if ntype == "DIGITAL_AUTO":
         markup.add(
@@ -881,13 +880,12 @@ def process_buy(call):
         
     else:
         markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
-        txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n" \
-              f"💳 **Deli ခ 4,000 လွှဲရန်:**\nWave: `09 792 654 163`\nKpay: `09 79 50 96 484`\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
+        txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n\n" \
+              f"💳 **Deli ခ 4,000 နှင့် တန်ဖိုးငွေ လွှဲရန်:**\nWave: `09 792 654 163`\nKpay: `09 79 50 96 484`\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
         
         msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
         bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
 
-# 📌 DIGITAL AUTO (SS ပို့၍ ဝယ်ယူခြင်း)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("prompt_digi_ss_"))
 def prompt_digi_ss(call):
     nid = int(call.data.split("_")[3])
@@ -973,7 +971,6 @@ def admin_reject_digital_order(call):
         bot.send_message(user_id, "⚠️ တောင်းပန်ပါတယ်၊ သင်တင်ပြလာသော ငွေလွှဲပြေစာ (SS) မမှန်ကန်ပါသဖြင့် အော်ဒါကို ပယ်ချလိုက်ပါသည်။")
     except Exception: pass
 
-# 💳 POINTS ဖြင့် ငွေချေခြင်း (DIGITAL AUTO)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paypoints_auto_"))
 def pay_points_auto(call):
     nid = int(call.data.split("_")[2])
@@ -1018,7 +1015,6 @@ def pay_points_auto(call):
         bot.send_message(ADMIN_ID, f"🔔 **Digital (AUTO - Points ဖြင့်ဝယ်) ရောင်းထွက်သည်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်", parse_mode="Markdown")
     except Exception: pass
 
-# 💳 POINTS ဖြင့် ငွေချေခြင်း (DIGITAL MANUAL)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paypoints_manual_"))
 def pay_points_manual(call):
     nid = int(call.data.split("_")[2])
@@ -1058,77 +1054,6 @@ def pay_points_manual(call):
     try:
         user_link = f"[{fname}](tg://user?id={uid})"
         admin_msg = f"🔔 **အော်ဒါသစ် (Points ဖြင့်ပေးချေပြီး):** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်"
-        admin_markup = types.InlineKeyboardMarkup(row_width=1)
-        admin_markup.add(
-            types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data=f"admin_comp_ord_{oid}"),
-            types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data=f"admin_cancel_ord_{oid}")
-        )
-        bot.send_message(ADMIN_ID, admin_msg, reply_markup=admin_markup, parse_mode="Markdown")
-    except Exception: pass
-
-# 💳 POINTS ဖြင့် ငွေချေခြင်း (ရိုးရိုးဖုန်းနံပါတ်များ)
-@bot.callback_query_handler(func=lambda call: call.data.startswith("paypoints_num_"))
-def pay_points_num(call):
-    nid = int(call.data.split("_")[2])
-    uid = call.from_user.id
-    fname = call.from_user.first_name
-    
-    with sqlite3.connect('vip_shop.db') as conn:
-        c = conn.cursor()
-        item = c.execute("SELECT phone_number, price FROM numbers WHERE id=? AND status='AVAILABLE'", (nid,)).fetchone()
-        user = c.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
-        
-        if not item or not user:
-            bot.answer_callback_query(call.id, "ဤနံပါတ် မရှိတော့ပါ။", show_alert=True)
-            return
-            
-        phone = item[0]
-        price = item[1]
-        balance = user[0]
-        
-        if balance < price:
-            bot.answer_callback_query(call.id, "လက်ကျန်ငွေ (Points) မလုံလောက်ပါ။", show_alert=True)
-            return
-            
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (price, uid))
-        c.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (nid,))
-        
-    bot.answer_callback_query(call.id, "ငွေချေမှု အောင်မြင်ပါသည်။")
-    txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ် (လက်ကျန်ငွေမှ ဖြတ်မည်)\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
-    msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
-    bot.register_next_step_handler(msg, save_order_points, phone, price, nid)
-
-def save_order_points(message, phone, price, nid):
-    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ", "👛 မိမိအကောင့်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
-        bot.send_message(message.chat.id, "❌ ပယ်ဖျက်လိုက်ပါသည်။")
-        with sqlite3.connect('vip_shop.db') as conn:
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (price, message.from_user.id))
-            c.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (nid,))
-            conn.commit()
-        return
-        
-    info = message.text
-    uid = message.from_user.id
-    fname = message.from_user.first_name
-    with sqlite3.connect('vip_shop.db') as conn:
-        c = conn.cursor()
-        c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, info + " (Paid with Points)", nid))
-        conn.commit()
-        oid = c.lastrowid
-        
-    success_txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
-    success_txt += f"💳 ကျသင့်ငွေကို သင့်အကောင့်လက်ကျန် (Points) မှ အောင်မြင်စွာ ဖြတ်တောက်ပြီးပါပြီ။\n"
-    success_txt += f"⏱ Admin မှ အမြန်ဆုံး ပို့ဆောင်ပေးပါမည်။ ကျေးဇူးတင်ပါတယ်။"
-    bot.send_message(message.chat.id, success_txt, parse_mode="Markdown")
-    
-    try:
-        phone_txt = str(phone)
-        user_link = f"[{fname}](tg://user?id={uid})"
-        admin_msg = f"🔔 **အော်ဒါသစ် (Points ဖြင့်ပေးချေပြီး):** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n📍 လိပ်စာ: {info}"
         admin_markup = types.InlineKeyboardMarkup(row_width=1)
         admin_markup.add(
             types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data=f"admin_comp_ord_{oid}"),
