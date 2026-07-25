@@ -13,7 +13,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
 ADMIN_ID = 8668319365
-# 📌 Channel ကို Join မှ သုံးခွင့်ပေးမည့် Channel Username (ဒါကိုတော့ မူရင်းအတိုင်း ထားထားပါသည်)
 CHANNEL_USERNAME = "@starmobile63956"
 ITEMS_PER_PAGE = 10
 
@@ -433,14 +432,15 @@ def admin_add_acc(message):
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
 
-# 📞 ဆိုင်နှင့် ဆက်သွယ်ရန်
+# 📞 ဆိုင်နှင့် ဆက်သွယ်ရန် (Copyable Numbers)
 @bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
 def contact_shop(message):
-    # 📌 Admin Telegram Username အမှန်ကို ပြောင်းလဲထားသည်
     text = "📞 **Star Mobile VIP Shop**\n\n" + \
            "💬 Telegram Admin: @orange310199\n" + \
-           "📱 ဖုန်းနံပါတ်: 09 7950 96484 / 09 7926 54163\n" + \
-           "⏰ အလုပ်ချိန်: မနက် ၉ နာရီ မှ ည ၉ နာရီအထိ"
+           "💳 **Wave:** `09 792 654 163` (Si Thu Aung)\n" + \
+           "💳 **Kpay:** `09 79 50 96 484` (Si Thu Aung)\n" + \
+           "⏰ အလုပ်ချိန်: မနက် ၉ နာရီ မှ ည ၉ နာရီအထိ\n\n" + \
+           "*(ဖုန်းနံပါတ်များကို တစ်ချက်နှိပ်၍ Copy ကူးနိုင်ပါသည်။)*"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 # 🛍️ USER SHOPPING LOGIC
@@ -569,11 +569,17 @@ def process_buy(call):
         txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n⚠️ ဤအကောင့်ကို ဝယ်ယူရန် သေချာပါသလား?"
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
         
-    # 📌 ရိုးရိုးဖုန်းနံပါတ် ဝယ်ယူခြင်းဖြစ်ပါက (Delivery ခ ပါမည်)
+    # 📌 ရိုးရိုးဖုန်းနံပါတ် ဝယ်ယူခြင်းဖြစ်ပါက (Delivery ခ နှင့် Copy ကူးနိုင်သော နံပါတ်များ)
     else:
         markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
-        txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09 7950 96484\nWave: 09 7926 54163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
-        msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
+        txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n\n" \
+              f"💳 **Deli ခ 4,000 လွှဲရန်:**\n" \
+              f"Wave: `09 792 654 163` (Si Thu Aung)\n" \
+              f"Kpay: `09 79 50 96 484` (Si Thu Aung)\n\n" \
+              f"📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
+        
+        # 📌 parse_mode="Markdown" ထည့်သွင်းထားသဖြင့် ` ` အတွင်းရှိစာသားများ Copy ကူးနိုင်မည်
+        msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
         bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
 
 # 📌 DIGITAL ACC သေချာကြောင်း နှိပ်လိုက်သောအခါ
@@ -596,7 +602,6 @@ def confirm_digital_buy(call):
         
     bot.answer_callback_query(call.id, "ဝယ်ယူရန် ရွေးချယ်မှု အောင်မြင်ပါသည်။")
     
-    # 📌 Admin Telegram Username အမှန်ကို ပြောင်းလဲထားသည်
     txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
     txt += f"🎮 **အကောင့်:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n"
     txt += "💬 **ငွေပေးချေရန်နှင့် အကောင့်ရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @orange310199 သို့ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
