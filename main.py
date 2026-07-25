@@ -144,10 +144,40 @@ def show_admin_panel(message):
         types.InlineKeyboardButton("📦 PENDING အော်ဒါဟောင်းများ ကြည့်ရန်", callback_data="admin_view_orders"),
         types.InlineKeyboardButton("📊 အရောင်းစာရင်း (Sales Report)", callback_data="admin_sales_report"),
         types.InlineKeyboardButton("🗑️ ရောင်းရန်ရှိသည့် ပစ္စည်းများဖျက်ရန်", callback_data="admin_del_list_0"),
+        types.InlineKeyboardButton("⚠️ စာရင်းအားလုံး ရှင်းလင်းမည် (Reset)", callback_data="admin_reset_confirm"),
         types.InlineKeyboardButton("💾 Database Backup ယူမည်", callback_data="admin_do_backup"),
         types.InlineKeyboardButton("🔄 Database Restore လုပ်မည်", callback_data="admin_start_restore")
     )
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+
+# 📌 Admin စာရင်းအားလုံး Reset ချသည့် လုပ်ဆောင်ချက်များ
+@bot.callback_query_handler(func=lambda call: call.data == "admin_reset_confirm")
+def admin_reset_confirm(call):
+    if call.from_user.id != ADMIN_ID: return
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("✅ ဟုတ်ကဲ့၊ အားလုံးဖျက်မည်", callback_data="admin_reset_procced"),
+        types.InlineKeyboardButton("❌ မလုပ်တော့ပါ", callback_data="admin_reset_cancel")
+    )
+    bot.edit_message_text("⚠️ **သတိပေးချက်!**\n\nပစ္စည်းစာရင်းများ (Numbers) နှင့် အော်ဒါမှတ်တမ်းများ (Orders) အားလုံး လုံးဝ ပျက်ပြယ်သွားမည် ဖြစ်ပါသည်။ ဆက်လုပ်ရန် သေချာပါသလား?", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_reset_procced")
+def admin_reset_procced(call):
+    if call.from_user.id != ADMIN_ID: return
+    with sqlite3.connect('vip_shop.db') as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM numbers")
+        c.execute("DELETE FROM orders")
+        conn.commit()
+    bot.answer_callback_query(call.id, "စာရင်းအားလုံး အောင်မြင်စွာ ရှင်းလင်းပြီးပါပြီ။", show_alert=True)
+    bot.edit_message_text("✅ **ဒေတာစာရင်းအားလုံး (Numbers နှင့် Orders) ကို အောင်မြင်စွာ ရှင်းလင်း (Reset) ပြီးပါပြီ။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_reset_cancel")
+def admin_reset_cancel(call):
+    if call.from_user.id != ADMIN_ID: return
+    bot.answer_callback_query(call.id, "ပယ်ဖျက်လိုက်ပါပြီ။")
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    show_admin_panel(call.message)
 
 # 📊 ADMIN: အရောင်းစာရင်း ချုပ် (Sales Report)
 @bot.callback_query_handler(func=lambda call: call.data == "admin_sales_report")
@@ -884,13 +914,11 @@ def admin_reject_digital_order(call):
         bot.send_message(user_id, "⚠️ တောင်းပန်ပါတယ်၊ သင်တင်ပြလာသော ငွေလွှဲပြေစာ (SS) မမှန်ကန်ပါသဖြင့် အော်ဒါကို ပယ်ချလိုက်ပါသည်။")
     except Exception: pass
 
-# 📌 ဖုန်းနံပါတ်ကြည့်ပြီး cancel နှိပ်ပါက ပထမအတိုင်း နံပါတ်စာရင်းကို ပထမစာမျက်နှာဖြင့် ပြန်လည်ပြသပေးမည်
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
 def user_cancel_buy(call):
     bot.answer_callback_query(call.id)
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
     
-    # ပစ္စည်းအမျိုးအစား (PRO, LUCKY) ကို ခွဲခြားပြီး ပထမစာရင်းစာမျက်နှာကို ပြန်ပြမည်
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
         nid = call.data.replace("cancel_buy_", "")
@@ -909,7 +937,6 @@ def user_cancel_buy(call):
                     send_paginated_operators(call.message.chat.id, op, 0, is_edit=True, message_id=call.message.message_id)
                     return
                     
-    # အကြောင်းပြချက် မတွေ့ပါက ပင်မစာရင်း သို့မဟုတ် မာစတာမီနူးသို့ ပို့မည်
     bot.edit_message_text("ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", call.message.chat.id, call.message.message_id)
     bot.send_message(call.message.chat.id, "✨ *VIP Shop Bot မှ ကြိုဆိုပါတယ်။*", reply_markup=main_menu(call.from_user.id), parse_mode="Markdown")
 
