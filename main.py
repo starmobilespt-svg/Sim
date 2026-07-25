@@ -179,7 +179,7 @@ def admin_sales_report(call):
             m_total = r[2] if r[2] else 0
             text += f"🔹 **{month_str}** : {m_total:,.0f} ကျပ် ({count} ခု)\n"
             
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_view_orders")
 def admin_view_orders(call):
@@ -207,7 +207,7 @@ def admin_view_orders(call):
             types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data="admin_comp_ord_" + str(r[0])),
             types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data="admin_cancel_ord_" + str(r[0]))
         )
-        bot.send_message(message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_comp_ord_"))
 def admin_complete_order(call):
@@ -365,14 +365,14 @@ def callback_admin_backup(call):
             bot.send_document(call.message.chat.id, f, caption="📦 Database Backup ဖိုင်ရပါပြီ။")
             bot.answer_callback_query(call.id, "Backup ဖိုင် ပို့ပေးလိုက်ပါပြီ။")
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ Error: " + str(e))
+        bot.send_message(call.message.chat.id, "❌ Error: " + str(e))
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_start_restore")
 def callback_admin_start_restore(call):
     if call.from_user.id != ADMIN_ID: return
     waiting_for_restore[ADMIN_ID] = True
     bot.answer_callback_query(call.id)
-    bot.send_message(message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
+    bot.send_message(call.message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['document'])
 def admin_handle_document(message):
@@ -514,7 +514,7 @@ def send_paginated_digital(chat_id, page, is_edit=False, message_id=None):
         else:
             btn_text = f"🎮 {name} ({platform}) - {price:,.0f} ကျပ်"
             
-        markup.add(types.InlineKeyboardButton(btn_text, callback_data="buy_" + str(item_id)))
+        markup.add(types.InlineKeyboardButton(btn_text, callback_data="selectitem_" + str(item_id)))
 
     nav = []
     if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data="digipage_" + str(page-1)))
@@ -546,7 +546,7 @@ def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None
         item_id = r[0]
         phone_txt = str(r[1])
         price = r[3]
-        markup.add(types.InlineKeyboardButton(f"{phone_txt} - {price:,.0f} ကျပ်", callback_data="buy_" + str(item_id)))
+        markup.add(types.InlineKeyboardButton(f"{phone_txt} - {price:,.0f} ကျပ်", callback_data="selectitem_" + str(item_id)))
 
     nav = []
     if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data="page_" + n_type + "_" + str(page-1)))
@@ -589,7 +589,7 @@ def send_paginated_operators(chat_id, op, page, is_edit=False, message_id=None):
         item_id = r[0]
         phone_txt = str(r[1])
         price = r[3]
-        markup.add(types.InlineKeyboardButton(f"{phone_txt} - {price:,.0f} ကျပ်", callback_data="buy_" + str(item_id)))
+        markup.add(types.InlineKeyboardButton(f"{phone_txt} - {price:,.0f} ကျပ်", callback_data="selectitem_" + str(item_id)))
 
     nav = []
     if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data="oppage_" + op + "_" + str(page-1)))
@@ -610,8 +610,10 @@ def handle_op_pagination(call):
     p = call.data.split("_")
     send_paginated_operators(call.message.chat.id, p[1], int(p[2]), True, call.message.message_id)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
+# 📌 စာရင်းထဲမှ ပစ္စည်းတစ်ခုခုကို နှိပ်လိုက်သည့်အခါ (selectitem_ သို့ ပြောင်းထားပါသည်)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("selectitem_"))
 def process_buy(call):
+    bot.answer_callback_query(call.id)
     nid = int(call.data.split("_")[1])
     
     with sqlite3.connect('vip_shop.db') as conn:
@@ -619,14 +621,14 @@ def process_buy(call):
         item = c.execute("SELECT id, phone_number, price, status, num_type FROM numbers WHERE id=?", (nid,)).fetchone()
         
     if not item or (item[3] == 'SOLD' and item[4] not in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']):
-        bot.answer_callback_query(call.id, "ဤပစ္စည်း မရှိတော့ပါ။", show_alert=True)
+        bot.send_message(call.message.chat.id, "⚠️ ဤပစ္စည်း မရှိတော့ပါ။")
         return
         
     if item[4] == 'DIGITAL_AUTO':
         with sqlite3.connect('vip_shop.db') as conn:
             actual_item = conn.cursor().execute("SELECT id, phone_number, price FROM numbers WHERE phone_number=? AND num_type='DIGITAL_AUTO' AND status='AVAILABLE' LIMIT 1", (item[1],)).fetchone()
             if not actual_item:
-                bot.answer_callback_query(call.id, "ဤပစ္စည်း Stock ကုန်သွားပါပြီ။", show_alert=True)
+                bot.send_message(call.message.chat.id, "⚠️ ဤပစ္စည်း Stock ကုန်သွားပါပြီ။")
                 return
             nid = actual_item[0]
             phone_txt = actual_item[1]
@@ -664,10 +666,10 @@ def process_buy(call):
             bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
         
     else:
-        # 📌 Cancel ခလုတ်အောက်တွင် ဝယ်ယူမည် ခလုတ်ထားရှိရန် ပြင်ဆင်ထားသည်
+        # 📌 ရိုးရိုးဖုန်းနံပါတ်များအတွက် "✅ ဝယ်ယူမည်" ခလုတ်
         markup.add(
             types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)),
-            types.InlineKeyboardButton("✅ ဝယ်ယူမည်", callback_data="buy_proceed_" + str(nid))
+            types.InlineKeyboardButton("✅ ဝယ်ယူမည်", callback_data="confirm_buy_phone_" + str(nid))
         )
         txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n\n" \
               f"⚠️ **Deli ခ 4,000 ကို ကြိုတင်လွှဲပေးရမည် ဖြစ်ပါသည်။**"
@@ -677,11 +679,11 @@ def process_buy(call):
         except Exception:
             bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
 
-# 📌 ဤနေရာတွင် buy_proceed callback ကို မှန်ကန်စွာ ဖမ်းယူပေးမည်
-@bot.callback_query_handler(func=lambda call: call.data.startswith("buy_proceed_"))
-def buy_proceed(call):
-    nid = int(call.data.split("_")[2])
+# 📌 "✅ ဝယ်ယူမည်" နှိပ်လိုက်ပါက လိပ်စာတောင်းခံမည့် ခလုတ် Handler (အမည်ပြောင်းလဲထားသည်)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_buy_phone_"))
+def confirm_buy_phone_action(call):
     bot.answer_callback_query(call.id)
+    nid = int(call.data.split("_")[3])
     msg = bot.send_message(call.message.chat.id, "📝 ကျေးဇူးပြု၍ သင့်၏ **နာမည်၊ ဖုန်းနံပါတ်၊ နှင့် လိပ်စာ** အတိအကျကို ရိုက်ထည့်ပေးပါ -")
     bot.register_next_step_handler(msg, receive_delivery_address, nid)
 
@@ -703,8 +705,8 @@ def receive_delivery_address(message, nid):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("send_order_ss_"))
 def send_order_ss_prompt(call):
-    nid = int(call.data.split("_")[3])
     bot.answer_callback_query(call.id)
+    nid = int(call.data.split("_")[3])
     msg = bot.send_message(call.message.chat.id, "🖼️ ကျေးဇူးပြု၍ ငွေလွှဲထားသော **Screenshot (SS) ပုံ** ကို ပို့ပေးပါ။")
     bot.register_next_step_handler(msg, receive_regular_order_ss, nid)
 
@@ -753,6 +755,7 @@ def receive_regular_order_ss(message, nid):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confdigi_manual_"))
 def confirm_digital_manual_buy(call):
+    bot.answer_callback_query(call.id)
     nid = int(call.data.split("_")[2])
     uid = call.from_user.id
     fname = call.from_user.first_name
@@ -768,8 +771,6 @@ def confirm_digital_manual_buy(call):
         conn.commit()
         oid = c.lastrowid
         
-    bot.answer_callback_query(call.id, "ဝယ်ယူရန် ရွေးချယ်မှု အောင်မြင်ပါသည်။")
-    
     txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
           f"🎮 **အကောင့်/ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n" \
           f"💬 **ငွေပေးချေရန်နှင့် ဝန်ဆောင်မှုရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @orange310199 သို့ ငွေလွှဲ SS နှင့်အတူ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
@@ -789,8 +790,8 @@ def confirm_digital_manual_buy(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("prompt_digi_ss_"))
 def prompt_digi_ss(call):
-    nid = int(call.data.split("_")[3])
     bot.answer_callback_query(call.id)
+    nid = int(call.data.split("_")[3])
     msg = bot.send_message(call.message.chat.id, "🖼️ ကျေးဇူးပြု၍ ငွေလွှဲထားသော Screenshot (SS) ပုံ ကို ပို့ပေးပါ။")
     bot.register_next_step_handler(msg, receive_digi_order_ss, nid)
 
@@ -875,6 +876,7 @@ def admin_reject_digital_order(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
 def user_cancel_buy(call):
+    bot.answer_callback_query(call.id)
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
     bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
 
