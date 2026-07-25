@@ -74,6 +74,13 @@ def detect_operator(phone):
     elif p.startswith(('092', '094', '095', '098', '091')): return 'MPT'
     else: return 'Other'
 
+# 📞 ဖုန်းနံပါတ်ကို (ဥပမာ - 09 7860 34500) ပုံစံဖြင့် Space ခြားပေးမည့် Function
+def format_phone(phone):
+    p = ''.join(filter(str.isdigit, phone))
+    if len(p) == 11 and p.startswith("09"):
+        return f"{p[:2]} {p[2:6]} {p[6:]}"
+    return phone
+
 def check_user_channel(user_id):
     if user_id == ADMIN_ID: return True
     try:
@@ -130,8 +137,6 @@ def require_channel_join(func):
 def show_admin_panel(message):
     if message.from_user.id != ADMIN_ID: return
     text = "👑 **Admin Control Panel**\n\n" + \
-           "👤 Admin Acc: @orange310199\n" + \
-           "📞 Admin Phone: 09 79 50 96 484\n\n" + \
            "အောက်ပါ Button များမှတစ်ဆင့် လွယ်ကူစွာ စီမံခန့်ခွဲနိုင်ပါသည်။\n\n" + \
            "📌 **နံပါတ်အသစ်ထည့်ရန် (Command):**\n" + \
            "`/addnum ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
@@ -148,7 +153,7 @@ def show_admin_panel(message):
     )
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
-# 👑 ADMIN: အော်ဒါများကြည့်ရန် နှင့် Cancel လုပ်ရန်
+# 👑 ADMIN: အော်ဒါများကြည့်ရန်၊ ပြီးစီးကြောင်း မှတ်ရန် နှင့် Cancel လုပ်ရန်
 @bot.callback_query_handler(func=lambda call: call.data == "admin_view_orders")
 def admin_view_orders(call):
     if call.from_user.id != ADMIN_ID: return
@@ -161,15 +166,45 @@ def admin_view_orders(call):
     
     bot.answer_callback_query(call.id)
     for r in rows:
+        f_phone = format_phone(str(r[2]))
         txt = "📦 **အော်ဒါနံပါတ်:** #ORD-" + "{:03d}".format(r[0]) + "\n" + \
               "👤 **ဝယ်သူ:** " + str(r[1]) + " (ID: `" + str(r[5]) + "`)\n" + \
-              "📱 **မှာယူသည့်နံပါတ်:** `" + str(r[2]) + "`\n" + \
+              "📱 **မှာယူသည့်နံပါတ်:** `" + f_phone + "`\n" + \
               "💰 **ကျသင့်ငွေ:** " + "{:,.0f}".format(r[3]) + " ကျပ်\n" + \
               "📍 **လိပ်စာ:** " + str(r[4])
         
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည် (နံပါတ်ပြန်ဖွင့်မည်)", callback_data="admin_cancel_ord_" + str(r[0])))
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data="admin_comp_ord_" + str(r[0])),
+            types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data="admin_cancel_ord_" + str(r[0]))
+        )
         bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
+
+# 📌 အော်ဒါ ပြီးစီးကြောင်း (Completed) နှိပ်သောအခါ အလုပ်လုပ်မည့် Function
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_comp_ord_"))
+def admin_complete_order(call):
+    if call.from_user.id != ADMIN_ID: return
+    oid = int(call.data.split("_")[3])
+    
+    with sqlite3.connect('vip_shop.db') as conn:
+        c = conn.cursor()
+        ord_data = c.execute("SELECT user_id, chosen_number FROM orders WHERE id=?", (oid,)).fetchone()
+        
+        if ord_data:
+            user_id, phone = ord_data
+            c.execute("UPDATE orders SET status='COMPLETED' WHERE id=?", (oid,))
+            conn.commit()
+            
+            f_phone = format_phone(str(phone))
+            bot.answer_callback_query(call.id, "အော်ဒါ ပြီးစီးကြောင်း မှတ်သားလိုက်ပါပြီ။", show_alert=True)
+            bot.edit_message_text("✅ **အော်ဒါ #ORD-" + "{:03d}".format(oid) + " ကို အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            
+            # ဝယ်သူထံသို့ Auto Message ပို့ခြင်း
+            try:
+                msg = "🎉 **ဝမ်းသာစရာ သတင်းပါခင်ဗျာ!**\n\nလူကြီးမင်း၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + f_phone + "`) ကို ဆိုင်မှ အောင်မြင်စွာ ပို့ဆောင်ပေးလိုက်ပါပြီ။\n\nအားပေးမှုကို အထူးကျေးဇူးတင်ရှိပါသည်။ 🙏"
+                bot.send_message(user_id, msg, parse_mode="Markdown")
+            except Exception: 
+                pass
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_cancel_ord_"))
 def admin_cancel_order(call):
@@ -185,12 +220,12 @@ def admin_cancel_order(call):
             c.execute("DELETE FROM orders WHERE id=?", (oid,))
             conn.commit()
             
+            f_phone = format_phone(str(phone))
             bot.answer_callback_query(call.id, "အော်ဒါကို ပယ်ဖျက်လိုက်ပါပြီ။", show_alert=True)
             bot.edit_message_text("❌ **အော်ဒါ #ORD-" + "{:03d}".format(oid) + " ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             
-            # User ထံ အကြောင်းကြားရန်
             try:
-                bot.send_message(user_id, "ℹ️ သင်၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + str(phone) + "`) ကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။")
+                bot.send_message(user_id, "ℹ️ သင်၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + f_phone + "`) ကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။")
             except Exception: pass
 
 # 👑 ADMIN: မှားထည့်ထားသော ဖုန်းနံပါတ်များ ဖျက်ရန်
@@ -208,8 +243,9 @@ def admin_view_numbers(call):
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
         status_txt = "AVAILABLE" if r[4] == 'AVAILABLE' else "SOLD"
-        btn_txt = "📱 " + str(r[1]) + " (" + str(r[2]) + ") - " + "{:,.0f}".format(r[3]) + " ကျပ် [" + status_txt + "]"
-        markup.add(types.InlineKeyboardButton("🗑️ ဖျက်မည်: " + str(r[1]), callback_data="admin_del_num_" + str(r[0])))
+        f_phone = format_phone(str(r[1]))
+        btn_txt = "📱 " + f_phone + " (" + str(r[2]) + ") - " + "{:,.0f}".format(r[3]) + " ကျပ် [" + status_txt + "]"
+        markup.add(types.InlineKeyboardButton("🗑️ ဖျက်မည်: " + f_phone, callback_data="admin_del_num_" + str(r[0])))
     
     bot.send_message(call.message.chat.id, "📱 **နောက်ဆုံးထည့်ထားသော နံပါတ် (၁၀) ခု -**\n*(ဖျက်လိုပါက အောက်ပါ Button ကို နှိပ်ပါ)*", reply_markup=markup, parse_mode="Markdown")
 
@@ -223,12 +259,12 @@ def admin_delete_number(call):
         if num:
             c.execute("DELETE FROM numbers WHERE id=?", (nid,))
             conn.commit()
-            bot.answer_callback_query(call.id, "နံပါတ် " + str(num[0]) + " ကို ဖျက်လိုက်ပါပြီ။", show_alert=True)
+            bot.answer_callback_query(call.id, "နံပါတ် " + format_phone(str(num[0])) + " ကို ဖျက်လိုက်ပါပြီ။", show_alert=True)
             bot.delete_message(call.message.chat.id, call.message.message_id)
         else:
             bot.answer_callback_query(call.id, "နံပါတ် မတွေ့ရှိပါ။", show_alert=True)
 
-# 👑 ADMIN: BACKUP & RESTORE BUTTONS
+# 👑 ADMIN: DATABASE BACKUP & RESTORE
 @bot.callback_query_handler(func=lambda call: call.data == "admin_do_backup")
 def callback_admin_backup(call):
     if call.from_user.id != ADMIN_ID: return
@@ -249,6 +285,8 @@ def callback_admin_start_restore(call):
 @bot.message_handler(content_types=['document'])
 def admin_handle_document(message):
     if message.from_user.id != ADMIN_ID: return
+    
+    # 🔄 Database Restore လုပ်ခြင်း
     if waiting_for_restore.get(ADMIN_ID) or message.caption == "/restore":
         try:
             fi = bot.get_file(message.document.file_id)
@@ -291,7 +329,7 @@ def admin_add_number(message):
         with sqlite3.connect('vip_shop.db') as conn:
             conn.cursor().execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, ntype))
             conn.commit()
-        bot.send_message(message.chat.id, "✅ ဖုန်းနံပါတ် " + phone + " (" + op + ") ထည့်ပြီးပါပြီ။")
+        bot.send_message(message.chat.id, "✅ ဖုန်းနံပါတ် " + format_phone(phone) + " (" + op + ") ထည့်ပြီးပါပြီ။")
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
 
@@ -299,8 +337,8 @@ def admin_add_number(message):
 @bot.message_handler(func=lambda m: m.text == "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
 def contact_shop(message):
     text = "📞 **Star Mobile VIP Shop**\n\n" + \
-           "💬 Admin Acc: @orange310199\n" + \
-           "📱 ဖုန်းနံပါတ်: 09 79 50 96 484\n" + \
+           "💬 Telegram Admin: @starmobile63956\n" + \
+           "📱 ဖုန်းနံပါတ်: 09 7950 96484 / 09 7926 54163\n" + \
            "⏰ အလုပ်ချိန်: မနက် ၉ နာရီ မှ ည ၉ နာရီအထိ"
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
@@ -323,11 +361,12 @@ def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None
             bot.send_message(chat_id, "📭 စာရင်း မရှိသေးပါ။")
             return
         tpages = math.ceil(tot / ITEMS_PER_PAGE)
-        rows = c.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE' LIMIT ? OFFSET ?", (n_type, ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
+        rows = c.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE' ORDER BY price ASC LIMIT ? OFFSET ?", (n_type, ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
 
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
-        markup.add(types.InlineKeyboardButton(r[1] + " (" + r[2] + ") - " + "{:,.0f}".format(r[3]) + " ကျပ်", callback_data="buy_" + str(r[0])))
+        f_phone = format_phone(str(r[1]))
+        markup.add(types.InlineKeyboardButton(f_phone + " (" + r[2] + ") - " + "{:,.0f}".format(r[3]) + " ကျပ်", callback_data="buy_" + str(r[0])))
 
     nav = []
     if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data="page_" + n_type + "_" + str(page-1)))
@@ -355,13 +394,14 @@ def show_operators(message):
 def filter_by_operator(call):
     op = call.data.split("_")[1]
     with sqlite3.connect('vip_shop.db') as conn:
-        rows = conn.cursor().execute("SELECT id, phone_number, price FROM numbers WHERE operator=? AND status='AVAILABLE'", (op,)).fetchall()
+        rows = conn.cursor().execute("SELECT id, phone_number, price FROM numbers WHERE operator=? AND status='AVAILABLE' ORDER BY price ASC", (op,)).fetchall()
     if not rows:
         bot.answer_callback_query(call.id, "နံပါတ် မရှိပါ။")
         return
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
-        markup.add(types.InlineKeyboardButton(r[1] + " - " + "{:,.0f}".format(r[2]) + " ကျပ်", callback_data="buy_" + str(r[0])))
+        f_phone = format_phone(str(r[1]))
+        markup.add(types.InlineKeyboardButton(f_phone + " - " + "{:,.0f}".format(r[2]) + " ကျပ်", callback_data="buy_" + str(r[0])))
     bot.edit_message_text("📡 *" + op + "* နံပါတ်များ -", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
@@ -374,7 +414,9 @@ def process_buy(call):
         return
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
-    txt = "🎯 နံပါတ်: " + str(item[0]) + "\n💰 ကျသင့်ငွေ: " + "{:,.0f}".format(item[1]) + " ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09795096484\nWave: 09792654163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
+    
+    f_phone = format_phone(str(item[0]))
+    txt = "🎯 နံပါတ်: " + f_phone + "\n💰 ကျသင့်ငွေ: " + "{:,.0f}".format(item[1]) + " ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09 7950 96484\nWave: 09 7926 54163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
     msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
     bot.register_next_step_handler(msg, save_order, item[0], item[1], nid)
 
@@ -398,8 +440,17 @@ def save_order(message, phone, price, nid):
         oid = c.lastrowid
     bot.send_message(message.chat.id, "✅ အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။ (#ORD-" + "{:03d}".format(oid) + ")")
     try:
-        bot.send_message(ADMIN_ID, "🔔 အော်ဒါသစ်: #ORD-" + "{:03d}".format(oid) + "\nဝယ်သူ: " + str(fname) + "\nဖုန်း: " + str(phone) + "\nဈေးနှုန်း: " + "{:,.0f}".format(price) + "\nလိပ်စာ: " + str(info))
-    except Exception: pass
+        f_phone = format_phone(str(phone))
+        bot.send_message(ADMIN_ID, "🔔 အော်ဒါသစ်: #ORD-" + "{:03d}".format(oid) + "\nဝယ်သူ: " + str(fname) + "\nဖုန်း: " + f_phone + "\nဈေးနှုန်း: " + "{:,.0f}".format(price) + "\nလိပ်စာ: " + str(info))
+    except Exception:
+        pass
 
-bot.polling(none_stop=True)
-        
+# 🚀 Bot စတင် Run ရန်
+print("Bot is running...")
+if __name__ == "__main__":
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(5)
