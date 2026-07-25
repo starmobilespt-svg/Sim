@@ -198,11 +198,14 @@ def admin_view_orders(call):
     bot.answer_callback_query(call.id)
     for r in rows:
         phone_txt = str(r[2])
-        txt = "📦 **အော်ဒါနံပါတ်:** #ORD-" + "{:03d}".format(r[0]) + "\n" + \
-              "👤 **ဝယ်သူ:** " + str(r[1]) + " (ID: `" + str(r[5]) + "`)\n" + \
-              "🛍 **မှာယူသည့်အရာ:** `" + phone_txt + "`\n" + \
-              "💰 **ကျသင့်ငွေ:** " + "{:,.0f}".format(r[3]) + " ကျပ်\n" + \
-              "📍 **လိပ်စာ/အချက်အလက်:** " + str(r[4])
+        # 📌 ဝယ်သူ၏ နာမည်ကို နှိပ်လျှင် Account သို့ ရောက်စေရန် ပြင်ဆင်ထားသည်
+        user_link = f"[{str(r[1])}](tg://user?id={r[5]})"
+        
+        txt = f"📦 **အော်ဒါနံပါတ်:** #ORD-{r[0]:03d}\n"
+        txt += f"👤 **ဝယ်သူ:** {user_link} (ID: `{r[5]}`)\n"
+        txt += f"🛍 **မှာယူသည့်အရာ:** `{phone_txt}`\n"
+        txt += f"💰 **ကျသင့်ငွေ:** {r[3]:,.0f} ကျပ်\n"
+        txt += f"📍 **လိပ်စာ/အချက်အလက်:** {r[4]}"
         
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
@@ -599,9 +602,10 @@ def confirm_digital_buy(call):
     
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
     
-    # 📌 Admin ထံ Notification ပို့ခြင်း
+    # 📌 Admin ထံ Notification ပို့ခြင်း (ဝယ်သူနာမည်ကို နှိပ်လျှင် Account သို့ ရောက်မည်)
     try:
-        bot.send_message(ADMIN_ID, f"🔔 **Digital အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {fname}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n(ဝယ်သူမှ Telegram တွင် လာရောက်ဆက်သွယ်ပါမည်။)", parse_mode="Markdown")
+        user_link = f"[{fname}](tg://user?id={uid})"
+        bot.send_message(ADMIN_ID, f"🔔 **Digital အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n(ဝယ်သူမှ Telegram တွင် လာရောက်ဆက်သွယ်ပါမည်။)", parse_mode="Markdown")
     except Exception: pass
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
@@ -624,9 +628,12 @@ def save_order(message, phone, price, nid):
         conn.commit()
         oid = c.lastrowid
     bot.send_message(message.chat.id, "✅ အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။ (#ORD-" + "{:03d}".format(oid) + ")")
+    
+    # 📌 Admin ထံ Notification ပို့ခြင်း (ဝယ်သူနာမည်ကို နှိပ်လျှင် Account သို့ ရောက်မည်)
     try:
         phone_txt = str(phone)
-        bot.send_message(ADMIN_ID, "🔔 အော်ဒါသစ်: #ORD-" + "{:03d}".format(oid) + "\nဝယ်သူ: " + str(fname) + "\nမှာယူသည့်အရာ: " + phone_txt + "\nဈေးနှုန်း: " + "{:,.0f}".format(price) + "\nလိပ်စာ: " + str(info))
+        user_link = f"[{fname}](tg://user?id={uid})"
+        bot.send_message(ADMIN_ID, f"🔔 **အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n📍 လိပ်စာ: {str(info)}", parse_mode="Markdown")
     except Exception:
         pass
 
