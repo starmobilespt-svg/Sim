@@ -80,7 +80,9 @@ def check_user_channel(user_id):
     try:
         m = bot.get_chat_member(CHANNEL_USERNAME, user_id)
         if m.status in ['member', 'administrator', 'creator']: return True
-    except Exception: pass
+    except Exception: 
+        # Bot သည် Channel တွင် Admin မဖြစ်ပါက သို့မဟုတ် Error တက်ပါက Bot အလုပ်မရပ်သွားစေရန် True ပေး၍ ကျော်သွားမည်
+        return True
     return False
 
 def main_menu(user_id):
@@ -114,7 +116,10 @@ def verify_join_callback(call):
     register_user(uid, call.from_user.first_name)
     if check_user_channel(uid):
         bot.answer_callback_query(call.id, "ကျေးဇူးတင်ပါတယ်။")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except Exception:
+            pass
         bot.send_message(call.message.chat.id, "✨ *VIP Shop Bot မှ ကြိုဆိုပါတယ်။*", reply_markup=main_menu(uid), parse_mode="Markdown")
     else:
         bot.answer_callback_query(call.id, "⚠️ Channel ကို အရင် Join ပေးပါ။", show_alert=True)
@@ -284,7 +289,6 @@ def admin_add_balance(message):
             
         with sqlite3.connect('vip_shop.db') as conn:
             c = conn.cursor()
-            # 📌 User မရှိသေးပါက အလိုအလျောက် ထည့်ပေးမည် (Safety check)
             c.execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, 'User', 0)", (target_uid,))
             user = c.execute("SELECT balance FROM users WHERE user_id=?", (target_uid,)).fetchone()
             
@@ -348,7 +352,6 @@ def admin_handle_state_input(message):
             
             with sqlite3.connect('vip_shop.db') as conn:
                 c = conn.cursor()
-                # 📌 User မရှိသေးပါက အလိုအလျောက် ထည့်ပေးမည် (Safety check)
                 c.execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, 'User', 0)", (target_uid,))
                 c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, target_uid))
                 conn.commit()
@@ -894,7 +897,6 @@ def process_buy(call):
         msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
         bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
 
-# 📌 DIGITAL MANUAL ဝယ်ယူခြင်း (သေချာပါသည် ဝယ်ယူမည် နှိပ်သောအခါ)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confdigi_manual_"))
 def confirm_digital_manual_buy(call):
     nid = int(call.data.split("_")[2])
