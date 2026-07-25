@@ -139,12 +139,13 @@ def show_admin_panel(message):
            "*(ဥပမာ: /addacc Netflix 1 Month, 15000, Netflix)*\n\n" + \
            "📌 **ပစ္စည်း အလွယ်ဖျက်ရန်:**\n" + \
            "`/del` ဟု ရိုက်ထည့်ပါ (သို့) အောက်ပါ ခလုတ်ကို နှိပ်ပါ။\n\n" + \
-           "📌 **Broadcast စာပို့ရန်:**\n" + \
-           "`/broadcast စာသား`"
+           "📌 **အော်ဒါ Cancel လုပ်ရန် (Command):**\n" + \
+           "`/cancel အော်ဒါနံပါတ်` *(ဥပမာ: /cancel 15)*\n\n" + \
+           "📌 **Broadcast စာပို့ရန်:** `/broadcast စာသား`"
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📦 အော်ဒါများကြည့်ရန် / Cancel လုပ်ရန်", callback_data="admin_view_orders"),
+        types.InlineKeyboardButton("📦 PENDING အော်ဒါဟောင်းများ ကြည့်ရန်", callback_data="admin_view_orders"),
         types.InlineKeyboardButton("📊 အရောင်းစာရင်း (Sales Report)", callback_data="admin_sales_report"),
         types.InlineKeyboardButton("🗑️ ရောင်းရန်ရှိသည့် ပစ္စည်းများဖျက်ရန်", callback_data="admin_del_list_0"),
         types.InlineKeyboardButton("💾 Database Backup ယူမည်", callback_data="admin_do_backup"),
@@ -229,7 +230,7 @@ def admin_complete_order(call):
             
             phone_txt = str(phone)
             bot.answer_callback_query(call.id, "အော်ဒါ ပြီးစီးကြောင်း မှတ်သားလိုက်ပါပြီ။", show_alert=True)
-            bot.edit_message_text("✅ **အော်ဒါ #ORD-" + "{:03d}".format(oid) + " ကို အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"✅ **အော်ဒါ #ORD-{oid:03d} ကို အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             
             try:
                 msg = "🎉 **ဝမ်းသာစရာ သတင်းပါခင်ဗျာ!**\n\nလူကြီးမင်း၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + phone_txt + "`) ကို ဆိုင်မှ အောင်မြင်စွာ ပို့ဆောင်ပေးလိုက်ပါပြီ။\n\nအားပေးမှုကို အထူးကျေးဇူးတင်ရှိပါသည်။ 🙏"
@@ -237,6 +238,7 @@ def admin_complete_order(call):
             except Exception: 
                 pass
 
+# 📌 BUTTON ဖြင့် Cancel လုပ်ခြင်း
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_cancel_ord_"))
 def admin_cancel_order(call):
     if call.from_user.id != ADMIN_ID: return
@@ -246,18 +248,48 @@ def admin_cancel_order(call):
         ord_data = c.execute("SELECT ref_id, user_id, chosen_number FROM orders WHERE id=?", (oid,)).fetchone()
         if ord_data:
             ref_id, user_id, phone = ord_data
+            
+            # နံပါတ်ကို ဆိုင်မှာ ပြန်ပေါ်အောင် (AVAILABLE) ပြန်ပြောင်းပေးမည်
             if ref_id:
                 c.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
-            c.execute("DELETE FROM orders WHERE id=?", (oid,))
+                
+            # Database မှ အပြီးမဖျက်တော့ဘဲ Status ကို 'CANCELLED' ဟုသာ မှတ်သားမည်
+            c.execute("UPDATE orders SET status='CANCELLED' WHERE id=?", (oid,))
             conn.commit()
             
             phone_txt = str(phone)
             bot.answer_callback_query(call.id, "အော်ဒါကို ပယ်ဖျက်လိုက်ပါပြီ။", show_alert=True)
-            bot.edit_message_text("❌ **အော်ဒါ #ORD-" + "{:03d}".format(oid) + " ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ **အော်ဒါ #ORD-{oid:03d} ကို Admin မှ Cancel လိုက်ပါသည်။**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             
             try:
-                bot.send_message(user_id, "ℹ️ သင်၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + phone_txt + "`) ကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။")
+                bot.send_message(user_id, f"⚠️ တောင်းပန်အပ်ပါသည်။\n\nသင်၏ အော်ဒါ #ORD-{oid:03d} (`{phone_txt}`) ကို Admin မှ ပယ်ဖျက် (Cancel) လိုက်ပါသည်။\nအသေးစိတ် သိရှိလိုပါက Admin သို့ ဆက်သွယ်မေးမြန်းနိုင်ပါသည်။")
             except Exception: pass
+
+# 📌 COMMAND ဖြင့် Cancel လုပ်ခြင်း (/cancel 15)
+@bot.message_handler(commands=['cancel'])
+def admin_cancel_command(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        oid = int(message.text.replace("/cancel", "").strip())
+        with sqlite3.connect('vip_shop.db') as conn:
+            c = conn.cursor()
+            ord_data = c.execute("SELECT ref_id, user_id, chosen_number FROM orders WHERE id=? AND status='PENDING'", (oid,)).fetchone()
+            
+            if ord_data:
+                ref_id, user_id, phone = ord_data
+                if ref_id:
+                    c.execute("UPDATE numbers SET status='AVAILABLE' WHERE id=?", (ref_id,))
+                c.execute("UPDATE orders SET status='CANCELLED' WHERE id=?", (oid,))
+                conn.commit()
+                
+                bot.send_message(message.chat.id, f"✅ အော်ဒါ #ORD-{oid:03d} ကို အောင်မြင်စွာ Cancel လုပ်လိုက်ပါပြီ။")
+                try:
+                    bot.send_message(user_id, f"⚠️ တောင်းပန်အပ်ပါသည်။\n\nသင်၏ အော်ဒါ #ORD-{oid:03d} (`{phone}`) ကို Admin မှ ပယ်ဖျက် (Cancel) လိုက်ပါသည်။")
+                except Exception: pass
+            else:
+                bot.send_message(message.chat.id, "❌ ဤအော်ဒါနံပါတ် မရှိပါ (သို့မဟုတ်) PENDING အခြေအနေမဟုတ်ပါ။")
+    except Exception:
+        bot.send_message(message.chat.id, "❌ မှားယွင်းနေပါသည်။ ဥပမာ - `/cancel 15` ဟု ရိုက်ထည့်ပါ။", parse_mode="Markdown")
 
 # 📌 ဖျက်ရန် စာရင်းကို လွယ်ကူစွာ ပြပေးမည့် Function 
 def show_delete_list(chat_id, page, is_edit=False, message_id=None):
@@ -549,7 +581,6 @@ def process_buy(call):
     with sqlite3.connect('vip_shop.db') as conn:
         item = conn.cursor().execute("SELECT phone_number, price, status, num_type FROM numbers WHERE id=?", (nid,)).fetchone()
     
-    # ရိုးရိုးပစ္စည်း (ဖုန်းနံပါတ်များ) အတွက် SOLD ဖြစ်နေလျှင် မရနိုင်ကြောင်း ပြမည်
     if not item or (item[2] == 'SOLD' and item[3] != 'DIGITAL'):
         bot.answer_callback_query(call.id, "ဤပစ္စည်း မရှိတော့ပါ။", show_alert=True)
         return
@@ -560,7 +591,6 @@ def process_buy(call):
     
     markup = types.InlineKeyboardMarkup()
     
-    # 📌 DIGITAL ACCOUNT ဝယ်ယူခြင်းဖြစ်ပါက
     if ntype == "DIGITAL":
         markup.add(
             types.InlineKeyboardButton("✅ သေချာပါသည် ဝယ်ယူမည်", callback_data="confdigi_" + str(nid)),
@@ -569,7 +599,6 @@ def process_buy(call):
         txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n⚠️ ဤအကောင့်ကို ဝယ်ယူရန် သေချာပါသလား?"
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
         
-    # 📌 ရိုးရိုးဖုန်းနံပါတ် ဝယ်ယူခြင်းဖြစ်ပါက (Delivery ခ နှင့် Copy ကူးနိုင်သော နံပါတ်များ)
     else:
         markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
         txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n\n" \
@@ -609,7 +638,15 @@ def confirm_digital_buy(call):
     
     try:
         user_link = f"[{fname}](tg://user?id={uid})"
-        bot.send_message(ADMIN_ID, f"🔔 **Digital အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n(ဝယ်သူမှ Telegram တွင် လာရောက်ဆက်သွယ်ပါမည်။)", parse_mode="Markdown")
+        admin_msg = f"🔔 **Digital အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n(ဝယ်သူမှ Telegram တွင် လာရောက်ဆက်သွယ်ပါမည်။)"
+        
+        # 📌 Admin ထံ ချက်ချင်း ပေါ်လာမည့် Notification တွင် ပြီးစီး / Cancel ခလုတ်များကို တစ်ပါတည်း ထည့်ပေးလိုက်သည်
+        admin_markup = types.InlineKeyboardMarkup(row_width=1)
+        admin_markup.add(
+            types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data=f"admin_comp_ord_{oid}"),
+            types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data=f"admin_cancel_ord_{oid}")
+        )
+        bot.send_message(ADMIN_ID, admin_msg, reply_markup=admin_markup, parse_mode="Markdown")
     except Exception: pass
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
@@ -632,7 +669,6 @@ def save_order(message, phone, price, nid):
         conn.commit()
         oid = c.lastrowid
         
-    # 📌 ဝယ်သူထံသို့ အောင်မြင်ကြောင်း၊ SS ပို့ရန်နှင့် Admin အမြန်ဆုံး အကြောင်းပြန်မည့်အကြောင်း စာပို့ခြင်း
     success_txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
     success_txt += f"💬 ကျေးဇူးပြု၍ ငွေလွှဲပြေစာ (Screenshot) ကို Admin 👉 @orange310199 ထံသို့ ပေးပို့ပေးပါ။\n"
     success_txt += f"⏱ Admin မှ အမြန်ဆုံး ပြန်လည်အကြောင်းပြန်ပေးပါမည်။ ကျေးဇူးတင်ပါတယ်။"
@@ -641,7 +677,15 @@ def save_order(message, phone, price, nid):
     try:
         phone_txt = str(phone)
         user_link = f"[{fname}](tg://user?id={uid})"
-        bot.send_message(ADMIN_ID, f"🔔 **အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n📍 လိပ်စာ: {str(info)}", parse_mode="Markdown")
+        admin_msg = f"🔔 **အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n📍 လိပ်စာ: {str(info)}"
+        
+        # 📌 Admin ထံ ချက်ချင်း ပေါ်လာမည့် Notification တွင် ပြီးစီး / Cancel ခလုတ်များကို တစ်ပါတည်း ထည့်ပေးလိုက်သည်
+        admin_markup = types.InlineKeyboardMarkup(row_width=1)
+        admin_markup.add(
+            types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data=f"admin_comp_ord_{oid}"),
+            types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data=f"admin_cancel_ord_{oid}")
+        )
+        bot.send_message(ADMIN_ID, admin_msg, reply_markup=admin_markup, parse_mode="Markdown")
     except Exception:
         pass
 
