@@ -755,7 +755,7 @@ def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None
             else: bot.send_message(chat_id, "📭 စာရင်း မရှိသေးပါ။")
             return
         tpages = math.ceil(tot / ITEMS_PER_PAGE)
-        rows = c.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE' ORDER BY price ASC LIMIT ? OFFSET ?", (n_type, ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
+        rows = c.execute("SELECT id, phone_number, price FROM numbers WHERE num_type=? AND status='AVAILABLE' ORDER BY price ASC LIMIT ? OFFSET ?", (n_type, ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
 
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
@@ -854,11 +854,12 @@ def process_buy(call):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     
+    # 📌 ဤနေရာတွင် ခလုတ်စာသားမှ ပမာဏ (Ks) ကို ဖယ်ရှားပေးလိုက်ပါပြီ
     if balance >= price and ntype in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']:
         if ntype == 'DIGITAL_AUTO':
-            markup.add(types.InlineKeyboardButton(f"💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည် ({balance:,.0f} Ks)", callback_data=f"paypoints_auto_{nid}"))
+            markup.add(types.InlineKeyboardButton("💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည်", callback_data=f"paypoints_auto_{nid}"))
         elif ntype == 'DIGITAL_MANUAL':
-            markup.add(types.InlineKeyboardButton(f"💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည် ({balance:,.0f} Ks)", callback_data=f"paypoints_manual_{nid}"))
+            markup.add(types.InlineKeyboardButton("💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည်", callback_data=f"paypoints_manual_{nid}"))
             
     if ntype == "DIGITAL_AUTO":
         markup.add(
@@ -868,7 +869,6 @@ def process_buy(call):
         txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n" \
               f"💳 **ငွေလွှဲရန်:**\nWave: `09 792 654 163` (Si Thu Aung)\nKpay: `09 79 50 96 484` (Si Thu Aung)"
         
-        # 📌 ဤနေရာတွင် Edit လုပ်ရာ၌ ခလုတ်အသစ်များ အဆင်ပြေစေရန် ပြင်ဆင်ထားသည်
         try:
             bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
         except Exception:
@@ -1145,7 +1145,7 @@ def save_order(message, phone, price, nid):
     except Exception:
         pass
 
-# 🚀 Bot စတင် Run ရன்
+# 🚀 Bot စတင် Run ရန်
 print("Bot is running...")
 if __name__ == "__main__":
     while True:
