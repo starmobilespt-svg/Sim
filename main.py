@@ -210,7 +210,7 @@ def receive_custom_topup_amount(message):
         bot.send_message(message.chat.id, "❌ နံပါတ်သာ မှန်ကန်စွာ ရိုက်ထည့်ပါ။")
 
 @bot.callback_query_handler(func=lambda call: call.data == "user_send_topup_ss")
-def user_topup_ss_prompt(call):
+def user_send_topup_ss(call):
     msg = bot.send_message(call.message.chat.id, "🖼️ ကျေးဇူးပြု၍ ငွေလွှဲထားသော **Screenshot (SS) ပုံ** ကို ပို့ပေးပါ။")
     bot.register_next_step_handler(msg, receive_topup_ss)
 
@@ -588,7 +588,7 @@ def callback_admin_start_restore(call):
     if call.from_user.id != ADMIN_ID: return
     waiting_for_restore[ADMIN_ID] = True
     bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
+    bot.send_message(message.chat.id, "📥 **Database Restore ပြုလုပ်ရန်:**\n\nကျေးဇူးပြု၍ သင်၏ Backup `.db` ဖိုင်ကို ဒီ Chat ထဲသို့ ပို့ပေးပါခင်ဗျာ။", parse_mode="Markdown")
 
 @bot.message_handler(content_types=['document'])
 def admin_handle_document(message):
@@ -854,7 +854,6 @@ def process_buy(call):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     
-    # 📌 ဖုန်းနံပါတ်များ (PRO, LUCKY, Operator) ဖြစ်ပါက Point ဖြင့် ငွေချေသည့်ခလုတ် မပါဝင်စေဘဲ ငွေလွှဲစနစ်ဖြင့်သာ ဝယ်ယူစေမည်
     if balance >= price and ntype in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']:
         if ntype == 'DIGITAL_AUTO':
             markup.add(types.InlineKeyboardButton(f"💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည် ({balance:,.0f} Ks)", callback_data=f"paypoints_auto_{nid}"))
@@ -868,7 +867,12 @@ def process_buy(call):
         )
         txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n" \
               f"💳 **ငွေလွှဲရန်:**\nWave: `09 792 654 163` (Si Thu Aung)\nKpay: `09 79 50 96 484` (Si Thu Aung)"
-        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        
+        # 📌 ဤနေရာတွင် Edit လုပ်ရာ၌ ခလုတ်အသစ်များ အဆင်ပြေစေရန် ပြင်ဆင်ထားသည်
+        try:
+            bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
         
     elif ntype == "DIGITAL_MANUAL":
         markup.add(
@@ -876,7 +880,11 @@ def process_buy(call):
             types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid))
         )
         txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n⚠️ Admin ကိုယ်တိုင် ဆောင်ရွက်ပေးရမည့် အမျိုးအစား ဖြစ်ပါသည်။"
-        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        
+        try:
+            bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
         
     else:
         markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
@@ -885,6 +893,43 @@ def process_buy(call):
         
         msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
         bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
+
+# 📌 DIGITAL MANUAL ဝယ်ယူခြင်း (သေချာပါသည် ဝယ်ယူမည် နှိပ်သောအခါ)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confdigi_manual_"))
+def confirm_digital_manual_buy(call):
+    nid = int(call.data.split("_")[2])
+    uid = call.from_user.id
+    fname = call.from_user.first_name
+    
+    with sqlite3.connect('vip_shop.db') as conn:
+        item = conn.cursor().execute("SELECT phone_number, price FROM numbers WHERE id=?", (nid,)).fetchone()
+        if not item: return
+        phone = item[0]
+        price = item[1]
+        
+        c = conn.cursor()
+        c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, "Digital Manual (Telegram မှ ဆက်သွယ်မည်)", nid))
+        conn.commit()
+        oid = c.lastrowid
+        
+    bot.answer_callback_query(call.id, "ဝယ်ယူရန် ရွေးချယ်မှု အောင်မြင်ပါသည်။")
+    
+    txt = f"✅ **အော်ဒါ ရွေးချယ်မှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n"
+    txt += f"🎮 **အကောင့်/ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n"
+    txt += "💬 **ငွေပေးချေရန်နှင့် ဝန်ဆောင်မှုရယူရန်အတွက် -**\nကျေးဇူးပြု၍ Admin 👉 @orange310199 သို့ ငွေလွှဲ SS နှင့်အတူ ယခုပဲ Message သွားပို့ပေးပါခင်ဗျာ။"
+    
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+    
+    try:
+        user_link = f"[{fname}](tg://user?id={uid})"
+        admin_msg = f"🔔 **Digital (MANUAL) အော်ဒါသစ်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်"
+        admin_markup = types.InlineKeyboardMarkup(row_width=1)
+        admin_markup.add(
+            types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data=f"admin_comp_ord_{oid}"),
+            types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data=f"admin_cancel_ord_{oid}")
+        )
+        bot.send_message(ADMIN_ID, admin_msg, reply_markup=admin_markup, parse_mode="Markdown")
+    except Exception: pass
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("prompt_digi_ss_"))
 def prompt_digi_ss(call):
@@ -1100,7 +1145,7 @@ def save_order(message, phone, price, nid):
     except Exception:
         pass
 
-# 🚀 Bot စတင် Run ရန်
+# 🚀 Bot စတင် Run ရன்
 print("Bot is running...")
 if __name__ == "__main__":
     while True:
