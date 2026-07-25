@@ -127,7 +127,7 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# 1 & 2. 👛 မိမိအကောင့် (Wallet)
+# 👛 မိမိအကောင့် (Wallet)
 @bot.message_handler(func=lambda m: m.text == "👛 မိမိအကောင့်")
 @require_channel_join
 def show_wallet(message):
@@ -142,7 +142,6 @@ def show_wallet(message):
     markup.add(types.InlineKeyboardButton("💳 point ထည့်မည်", callback_data="user_start_topup"))
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
 
-# 3. point ပမာဏ ရွေးချယ်ခိုင်းခြင်း (500, 1000, 3000 နှင့် Custom)
 @bot.callback_query_handler(func=lambda call: call.data == "user_start_topup")
 def user_start_topup(call):
     markup = types.InlineKeyboardMarkup(row_width=3)
@@ -186,7 +185,6 @@ def show_payment_gateways(chat_id, message_id, amount):
     except Exception:
         bot.send_message(chat_id, txt, reply_markup=markup, parse_mode="Markdown")
 
-# 4 & 5. Custom ရိုက်ထည့်သည့်အခါ ရာပိတ် စစ်ဆေးခြင်းနှင့် SS တောင်းခံခြင်း
 @bot.message_handler(func=lambda m: m.from_user.id in admin_states and admin_states[m.from_user.id].get("action") == "waiting_user_custom_topup")
 def receive_custom_topup_amount(message):
     uid = message.from_user.id
@@ -238,7 +236,6 @@ def receive_topup_ss(message):
     except Exception:
         bot.send_message(message.chat.id, "❌ ပို့ဆောင်ရာတွင် အမှားဖြစ်နေပါသည်၊ ထပ်မံကြိုးစားပါ။")
 
-# 6 & 7. Admin မှ ခွင့်ပြုသည်နှိပ်ပြီး ပမာဏထည့်သွင်းခြင်း (ပို/လို ပြင်နိုင်သော /addbal နှင့် /subbal များပါရှိသည်)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_approve_topup_"))
 def admin_approve_topup(call):
     if call.from_user.id != ADMIN_ID: return
@@ -254,7 +251,7 @@ def show_admin_panel(message):
     if message.from_user.id != ADMIN_ID: return
     text = "👑 **Admin Control Panel**\n\n" + \
            "📌 **ဖုန်းနံပါတ်အသစ်ထည့်ရန်:** `/addnum နံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
-           "📌 **Digital Acc အသစ်ထည့်ရန်:** `/addacc အမည်, ဈေးနှုန်း, Platform, AUTO, အချက်အလက်`\n" + \
+           "📌 **Digital Acc အသစ်ထည့်ရန်:** `/addacc အမည်, ဈေးနှုန်း, Platform, AUTO/MANUAL, အချက်အလက်`\n" + \
            "📌 **Point ထည့်ပေးရန် (Command):** `/addbal user_id, 1000`\n" + \
            "📌 **Point နှုတ်ရန် (ပိုသွားပါက):** `/subbal user_id, 500`\n" + \
            "📌 **ပစ္စည်းဖျက်ရန်:** `/del` | **အော်ဒါ Cancel ရန်:** `/cancel အော်ဒါနံပါတ်`"
@@ -345,7 +342,7 @@ def admin_handle_state_input(message):
             amount = float(message.text.strip())
             
             if amount % 100 != 0:
-                bot.send_message(message.chat.id, "⚠️ **ရာဂဏန်း (ရာပိတ်) သာ လက်ခံပါသည်။** ဥပမာ: `1100`, `1500` ကဲ့သို့သော ပမာဏကိုသာ ရိုက်ထည့်ပါ။ ကျေးဇူးပြု၍ ထပ်မံရိုက်ထည့်ပါ:", parse_mode="Markdown")
+                bot.send_message(message.chat.id, "⚠️ **ရာဂဏန်း (ရာပိတ်) သာ လက်ခံပါသည်။** ကျေးဇူးပြု၍ ပမာဏအမှန်ကို ထပ်မံရိုက်ထည့်ပါ:", parse_mode="Markdown")
                 return
                 
             target_uid = state["target_uid"]
@@ -887,7 +884,7 @@ def process_buy(call):
         txt = f"🎯 ရွေးချယ်ထားသောပစ္စည်း: {phone_txt}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n" \
               f"💳 **Deli ခ 4,000 လွှဲရန်:**\nWave: `09 792 654 163`\nKpay: `09 79 50 96 484`\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
         
-        msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
+        msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
         bot.register_next_step_handler(msg, save_order, phone_txt, price, nid)
 
 # 📌 DIGITAL AUTO (SS ပို့၍ ဝယ်ယူခြင်း)
@@ -989,7 +986,7 @@ def pay_points_auto(call):
         user = c.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
         
         if not item or not user:
-            bot.answer_callback_query(call.id, "ပစ္စည်း မရှိတော့ပါ။", show_alert=True)
+            bot.answer_callback_query(call.id, "ပစ္စည်း မရှိတော့ပါ သို့မဟုတ် အကောင့်အချက်အလက် မှားယွင်းနေပါသည်။", show_alert=True)
             return
             
         phone = item[0]
