@@ -4,8 +4,10 @@ import telebot
 from telebot import types
 import math
 import logging
+import threading
+from flask import Flask
+import time
 import requests
-from flask import Flask, request
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
@@ -16,27 +18,31 @@ ITEMS_PER_PAGE = 10
 
 bot = telebot.TeleBot(TOKEN)
 
-admin_states = {}
-user_topup_amounts = {}
 waiting_for_restore = {}
 
-# 🌐 Flask Server Setup for Webhook (Render Free 24/7 Run ရန်)
+# 🌐 Flask Server & Keep Alive Ping (Render Free 24/7 Run ရန်)
 app = Flask(__name__)
 PORT = int(os.environ.get("PORT", 10000))
 
 @app.route('/')
 def home():
-    return "VIP Bot Running 24/7 via Webhook"
+    return "VIP Bot Running 24/7"
 
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "!", 200
-    else:
-        return "Forbidden", 403
+def run_web_server():
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+
+threading.Thread(target=run_web_server, daemon=True).start()
+
+def keep_alive_ping():
+    time.sleep(10)
+    while True:
+        try:
+            requests.get("http://127.0.0.1:" + str(PORT))
+        except Exception:
+            pass
+        time.sleep(14 * 60)
+
+threading.Thread(target=keep_alive_ping, daemon=True).start()
 
 # 🗄️ Database တည်ဆောက်ခြင်း
 def init_db():
@@ -46,14 +52,14 @@ def init_db():
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, phone_number TEXT, operator TEXT, price REAL, num_type TEXT, status TEXT DEFAULT 'AVAILABLE', digital_info TEXT DEFAULT '')''')
         c.execute('''CREATE TABLE IF NOT EXISTS orders 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT, chosen_number TEXT, price REAL, contact_info TEXT, ref_id INTEGER, status TEXT DEFAULT 'PENDING', date TIMESTAMP DEFAULT (datetime('now', 'localtime')))''')
-        c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, first_name TEXT, balance REAL DEFAULT 0)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, first_name TEXT)''')
         conn.commit()
 
 init_db()
 
 def register_user(user_id, first_name):
     with sqlite3.connect('vip_shop.db') as conn:
-        conn.cursor().execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, ?, 0)", (user_id, first_name))
+        conn.cursor().execute("INSERT OR IGNORE INTO users (user_id, first_name) VALUES (?, ?)", (user_id, first_name))
         conn.commit()
 
 def detect_operator(phone):
@@ -73,7 +79,6 @@ def check_user_channel(user_id):
         m = bot.get_chat_member(CHANNEL_USERNAME, user_id)
         if m.status in ['member', 'administrator', 'creator']: return True
     except Exception: 
-        # Error တက်ပါက (သို့မဟုတ် Bot Admin မဖြစ်သေးပါက) ဝယ်သူများ အဆင်ပြေစွာ ဆက်သုံးနိုင်ရန် True ပေးမည်
         return True
     return False
 
@@ -81,7 +86,7 @@ def main_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်")
     markup.add("📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ") 
-    markup.add("👛 မိမိအကောင့်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
+    markup.add("📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
     if user_id == ADMIN_ID: markup.add("👑 Admin Panel")
     return markup
 
@@ -124,124 +129,6 @@ def require_channel_join(func):
         return func(message)
     return wrapper
 
-# 👛 မိမိအကောင့် (Wallet)
-@bot.message_handler(func=lambda m: m.text == "👛 မိမိအကောင့်")
-@require_channel_join
-def show_wallet(message):
-    uid = message.from_user.id
-    with sqlite3.connect('vip_shop.db') as conn:
-        res = conn.cursor().execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
-        balance = res[0] if res else 0
-        
-    text = f"👛 **သင်၏ အကောင့်အချက်အလက်**\n\n💰 လက်ကျန် Point: `{balance:,.0f}` ကျပ်"
-           
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("💳 point ထည့်မည်", callback_data="user_start_topup"))
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "user_start_topup")
-def user_start_topup(call):
-    markup = types.InlineKeyboardMarkup(row_width=3)
-    markup.add(
-        types.InlineKeyboardButton("500", callback_data="topup_amt_500"),
-        types.InlineKeyboardButton("1000", callback_data="topup_amt_1000"),
-        types.InlineKeyboardButton("3000", callback_data="topup_amt_3000")
-    )
-    markup.add(types.InlineKeyboardButton("✍️ ကိုယ်တိုင် ပမာဏရိုက်ထည့်မည်", callback_data="topup_custom_input"))
-    txt = "💳 **ထည့်သွင်းမည့် Point ပမာဏကို ရွေးချယ်ပါ** (သို့မဟုတ်) အောက်ပါခလုတ်ကို နှိပ်၍ လိုသလောက် ရိုက်ထည့်နိုင်ပါသည်:"
-    
-    try:
-        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
-    except Exception:
-        bot.send_message(call.message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data == "topup_custom_input")
-def topup_custom_input(call):
-    admin_states[call.from_user.id] = {"action": "waiting_user_custom_topup"}
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "✍️ ကျေးဇူးပြု၍ ထည့်သွင်းလိုသော ပမာဏကို ရိုက်ထည့်ပေးပါ:\n*(ရာပိတ် / ရာဂဏန်းသာ ဖြစ်ရပါမည်။ ဥပမာ - 1100, 1500)*", parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("topup_amt_"))
-def topup_preset_amount(call):
-    amount = float(call.data.split("_")[2])
-    uid = call.from_user.id
-    user_topup_amounts[uid] = amount
-    show_payment_gateways(call.message.chat.id, call.message.message_id, amount)
-
-def show_payment_gateways(chat_id, message_id, amount):
-    txt = f"💳 **ရွေးချယ်ထားသော ပမာဏ:** `{amount:,.0f}` ကျပ်\n\n" \
-          f"အောက်ပါ အကောင့်များသို့ ငွေလွှဲပြီး ငွေလွှဲပြေစာ (Screenshot) ကို ပို့ပေးပါ။\n\n" \
-          f"Wave: `09 792 654 163` (Si Thu Aung)\n" \
-          f"Kpay: `09 79 50 96 484` (Si Thu Aung)"
-          
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📤 ငွေလွှဲပြေစာ (SS) ပို့မည်", callback_data="user_send_topup_ss"))
-    
-    try:
-        bot.edit_message_text(txt, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
-    except Exception:
-        bot.send_message(chat_id, txt, reply_markup=markup, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda m: m.from_user.id in admin_states and admin_states[m.from_user.id].get("action") == "waiting_user_custom_topup")
-def receive_custom_topup_amount(message):
-    uid = message.from_user.id
-    try:
-        amount = float(message.text.strip())
-        
-        if amount % 100 != 0:
-            bot.send_message(message.chat.id, "⚠️ **ရာဂဏန်း (ရာပိတ်) သာ လက်ခံပါသည်။** ဥပမာ: `1100`, `1500` ကဲ့သို့သော ပမာဏကိုသာ ရိုက်ထည့်ပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ:", parse_mode="Markdown")
-            return
-            
-        del admin_states[uid]
-        user_topup_amounts[uid] = amount
-        
-        txt = f"💳 **ရွေးချယ်ထားသော ပမာဏ:** `{amount:,.0f}` ကျပ်\n\n" \
-              f"အောက်ပါ အကောင့်များသို့ ငွေလွှဲပြီး ငွေလွှဲပြေစာ (Screenshot) ကို ပို့ပေးပါ။\n\n" \
-              f"Wave: `09 792 654 163` (Si Thu Aung)\n" \
-              f"Kpay: `09 79 50 96 484` (Si Thu Aung)"
-              
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("📤 ငွေလွှဲပြေစာ (SS) ပို့မည်", callback_data="user_send_topup_ss"))
-        bot.send_message(message.chat.id, txt, reply_markup=markup, parse_mode="Markdown")
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ နံပါတ်သာ မှန်ကန်စွာ ရိုက်ထည့်ပါ။")
-
-@bot.callback_query_handler(func=lambda call: call.data == "user_send_topup_ss")
-def user_send_topup_ss(call):
-    msg = bot.send_message(call.message.chat.id, "🖼️ ကျေးဇူးပြု၍ ငွေလွှဲထားသော **Screenshot (SS) ပုံ** ကို ပို့ပေးပါ။")
-    bot.register_next_step_handler(msg, receive_topup_ss)
-
-def receive_topup_ss(message):
-    if message.content_type != 'photo':
-        bot.send_message(message.chat.id, "❌ ကျေးဇူးပြု၍ ပုံ (Photo) သာ ပို့ပေးပါ။")
-        return
-        
-    photo_id = message.photo[-1].file_id
-    uid = message.from_user.id
-    fname = message.from_user.first_name
-    amount = user_topup_amounts.get(uid, 0)
-    
-    user_link = f"[{fname}](tg://user?id={uid})"
-    admin_txt = f"💳 **ငွေဖြည့်ရန် ငွေလွှဲပြေစာ (SS) ရောက်ရှိလာပါပြီ**\n\n👤 ဝယ်သူ: {user_link}\n🆔 User ID: `{uid}`\n💰 ရွေးချယ်ထားသော ပမာဏ: `{amount:,.0f}` ကျပ်"
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ ခွင့်ပြုသည်", callback_data=f"admin_approve_topup_{uid}"))
-    
-    try:
-        bot.send_photo(ADMIN_ID, photo_id, caption=admin_txt, reply_markup=markup, parse_mode="Markdown")
-        bot.send_message(message.chat.id, "✅ ငွေလွှဲပြေစာ ပို့ခြင်း အောင်မြင်ပါသည်။ Admin မှ စစ်ဆေးအတည်ပြုပေးပါလိမ့်မည်။")
-    except Exception:
-        bot.send_message(message.chat.id, "❌ ပို့ဆောင်ရာတွင် အမှားဖြစ်နေပါသည်၊ ထပ်မံကြိုးစားပါ။")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_approve_topup_"))
-def admin_approve_topup(call):
-    if call.from_user.id != ADMIN_ID: return
-    target_uid = int(call.data.split("_")[3])
-    
-    admin_states[ADMIN_ID] = {"action": "waiting_topup_amount", "target_uid": target_uid}
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, f"📥 ဤ User (`{target_uid}`) ထံသို့ ထည့်သွင်းပေးမည့် Point ပမာဏကို ရိုက်ထည့်ပေးပါ (ဥပမာ - `1500`):\n*(ရာပိတ် / ရာဂဏန်းသာ ဖြစ်ရပါမည်)*", parse_mode="Markdown")
-
 # 👑 ADMIN PANEL & CONTROL BUTTONS
 @bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
 def show_admin_panel(message):
@@ -249,8 +136,6 @@ def show_admin_panel(message):
     text = "👑 **Admin Control Panel**\n\n" + \
            "📌 **ဖုန်းနံပါတ်အသစ်ထည့်ရန်:** `/addnum နံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
            "📌 **Digital Acc အသစ်ထည့်ရန်:** `/addacc အမည်, ဈေးနှုန်း, Platform, AUTO/MANUAL, အချက်အလက်`\n" + \
-           "📌 **Point ထည့်ပေးရန် (Command):** `/addbal user_id, 1000`\n" + \
-           "📌 **Point နှုတ်ရန် (ပိုသွားပါက):** `/subbal user_id, 500`\n" + \
            "📌 **ပစ္စည်းဖျက်ရန်:** `/del` | **အော်ဒါ Cancel ရန်:** `/cancel အော်ဒါနံပါတ်`"
     
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -262,104 +147,6 @@ def show_admin_panel(message):
         types.InlineKeyboardButton("🔄 Database Restore လုပ်မည်", callback_data="admin_start_restore")
     )
     bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
-
-@bot.message_handler(commands=['addbal'])
-def admin_add_balance(message):
-    if message.from_user.id != ADMIN_ID: return
-    try:
-        parts = message.text.replace("/addbal", "").strip().split(',')
-        if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။ ဥပမာ - `/addbal 8668319365, 1000`", parse_mode="Markdown")
-            return
-        
-        target_uid = int(parts[0].strip())
-        amount = float(parts[1].strip())
-        
-        if amount % 100 != 0:
-            bot.send_message(message.chat.id, "⚠️ ရာဂဏန်း (ရာပိတ်) သာ လက်ခံပါသည်။")
-            return
-            
-        with sqlite3.connect('vip_shop.db') as conn:
-            c = conn.cursor()
-            c.execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, 'User', 0)", (target_uid,))
-            user = c.execute("SELECT balance FROM users WHERE user_id=?", (target_uid,)).fetchone()
-            
-            new_bal = user[0] + amount
-            c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, target_uid))
-            conn.commit()
-            
-        bot.send_message(message.chat.id, f"✅ User ID `{target_uid}` သို့ **{amount:,.0f}** ကျပ် ထည့်သွင်းပြီးပါပြီ။ (လက်ကျန်ငွေ: {new_bal:,.0f} ကျပ်)", parse_mode="Markdown")
-        try:
-            bot.send_message(target_uid, f"🎉 **ငွေလက်ခံရရှိပါပြီ!**\n\nသင်၏ အကောင့်ထဲသို့ Admin မှ ပမာဏ **{amount:,.0f}** ကျပ် ထည့်သွင်းပေးလိုက်ပါပြီ။\n💰 လက်ကျန်ငွေစုစုပေါင်း: `{new_bal:,.0f}` ကျပ်", parse_mode="Markdown")
-        except Exception: pass
-    except Exception as e:
-        bot.send_message(message.chat.id, "❌ Error: " + str(e))
-
-@bot.message_handler(commands=['subbal'])
-def admin_sub_balance(message):
-    if message.from_user.id != ADMIN_ID: return
-    try:
-        parts = message.text.replace("/subbal", "").strip().split(',')
-        if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ပုံစံမှားနေပါသည်။ ဥပမာ - `/subbal 8668319365, 500`", parse_mode="Markdown")
-            return
-        
-        target_uid = int(parts[0].strip())
-        amount = float(parts[1].strip())
-        
-        if amount % 100 != 0:
-            bot.send_message(message.chat.id, "⚠️ ရာဂဏန်း (ရာပိတ်) သာ လက်ခံပါသည်။")
-            return
-            
-        with sqlite3.connect('vip_shop.db') as conn:
-            c = conn.cursor()
-            user = c.execute("SELECT balance FROM users WHERE user_id=?", (target_uid,)).fetchone()
-            if not user:
-                bot.send_message(message.chat.id, "❌ ဤ User ID ကို မတွေ့ပါ။")
-                return
-            
-            new_bal = max(0, user[0] - amount)
-            c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, target_uid))
-            conn.commit()
-            
-        bot.send_message(message.chat.id, f"✅ User ID `{target_uid}` ထံမှ **{amount:,.0f}** ကျပ် နှုတ်ယူလိုက်ပါပြီ။ (လက်ကျန်ငွေ: {new_bal:,.0f} ကျပ်)", parse_mode="Markdown")
-        try:
-            bot.send_message(target_uid, f"⚠️ **အကောင့်လက်ကျန် ဖြတ်တောက်ခံရမှု!**\n\nသင်၏ အကောင့်ထဲမှ Admin မှ **{amount:,.0f}** ကျပ် နှုတ်ယူလိုက်ပါပြီ။\n💰 လက်ကျန်ငွေစုစုပေါင်း: `{new_bal:,.0f}` ကျပ်", parse_mode="Markdown")
-        except Exception: pass
-    except Exception as e:
-        bot.send_message(message.chat.id, "❌ Error: " + str(e))
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and ADMIN_ID in admin_states)
-def admin_handle_state_input(message):
-    state = admin_states[ADMIN_ID]
-    if state.get("action") == "waiting_topup_amount":
-        try:
-            amount = float(message.text.strip())
-            
-            if amount % 100 != 0:
-                bot.send_message(message.chat.id, "⚠️ **ရာဂဏန်း (ရာပိတ်) သာ လက်ခံပါသည်။** ကျေးဇူးပြု၍ ပမာဏအမှန်ကို ထပ်မံရိုက်ထည့်ပါ:", parse_mode="Markdown")
-                return
-                
-            target_uid = state["target_uid"]
-            
-            with sqlite3.connect('vip_shop.db') as conn:
-                c = conn.cursor()
-                c.execute("INSERT OR IGNORE INTO users (user_id, first_name, balance) VALUES (?, 'User', 0)", (target_uid,))
-                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, target_uid))
-                conn.commit()
-                res = c.execute("SELECT balance FROM users WHERE user_id=?", (target_uid,)).fetchone()
-                new_bal = res[0] if res else amount
-                
-            del admin_states[ADMIN_ID]
-            
-            bot.send_message(message.chat.id, f"✅ User (`{target_uid}`) အကောင့်ထဲသို့ **{amount:,.0f}** ကျပ် အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။\n💰 သူ၏လက်ကျန်ငွေ: `{new_bal:,.0f}` ကျပ်", parse_mode="Markdown")
-            
-            try:
-                msg = f"🎉 **ငွေဖြည့်သွင်းမှု အောင်မြင်ပါသည်!**\n\nAdmin မှ သင့်အကောင့်ထဲသို့ ပမာဏ **{amount:,.0f}** ကျပ် ထည့်သွင်းပေးလိုက်ပါပြီ။\n💰 လက်ကျန်ငွေစုစုပေါင်း: `{new_bal:,.0f}` ကျပ်"
-                bot.send_message(target_uid, msg, parse_mode="Markdown")
-            except Exception: pass
-        except ValueError:
-            bot.send_message(message.chat.id, "❌ နံပါတ်သာ ရိုက်ထည့်ပါ။ ကျေးဇူးပြု၍ ထပ်ကြိုးစားပါ:")
 
 # 📊 ADMIN: အရောင်းစာရင်း ချုပ် (Sales Report)
 @bot.callback_query_handler(func=lambda call: call.data == "admin_sales_report")
@@ -821,12 +608,10 @@ def handle_op_pagination(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def process_buy(call):
     nid = int(call.data.split("_")[1])
-    uid = call.from_user.id
     
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
         item = c.execute("SELECT id, phone_number, price, status, num_type FROM numbers WHERE id=?", (nid,)).fetchone()
-        user_bal = c.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
         
     if not item or (item[3] == 'SOLD' and item[4] not in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']):
         bot.answer_callback_query(call.id, "ဤပစ္စည်း မရှိတော့ပါ။", show_alert=True)
@@ -845,24 +630,15 @@ def process_buy(call):
         phone_txt = str(item[1])
         price = item[2]
         
-    balance = user_bal[0] if user_bal else 0
     ntype = str(item[4])
-    
     markup = types.InlineKeyboardMarkup(row_width=1)
     
-    # ဖုန်းနံပါတ်များအတွက် Point ဖြင့် ငွေချေခွင့်မပြုပါ (Digital များအတွက်သာ ပေးမည်)
-    if balance >= price and ntype in ['DIGITAL_AUTO', 'DIGITAL_MANUAL']:
-        if ntype == 'DIGITAL_AUTO':
-            markup.add(types.InlineKeyboardButton("💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည်", callback_data=f"paypoints_auto_{nid}"))
-        elif ntype == 'DIGITAL_MANUAL':
-            markup.add(types.InlineKeyboardButton("💳 လက်ကျန်ငွေ (Points) ဖြင့် ငွေချေမည်", callback_data=f"paypoints_manual_{nid}"))
-            
     if ntype == "DIGITAL_AUTO":
         markup.add(
             types.InlineKeyboardButton("📤 SS ပို့မည်", callback_data="prompt_digi_ss_" + str(nid)),
             types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid))
         )
-        txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n" \
+        txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n" \
               f"💳 **ငွေလွှဲရန်:**\nWave: `09 792 654 163` (Si Thu Aung)\nKpay: `09 79 50 96 484` (Si Thu Aung)"
         
         try:
@@ -875,7 +651,7 @@ def process_buy(call):
             types.InlineKeyboardButton("✅ သေချာပါသည် ဝယ်ယူမည်", callback_data="confdigi_manual_" + str(nid)),
             types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid))
         )
-        txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n👛 သင်၏လက်ကျန်ငွေ: {balance:,.0f} ကျပ်\n\n⚠️ Admin ကိုယ်တိုင် ဆောင်ရွက်ပေးရမည့် အမျိုးအစား ဖြစ်ပါသည်။"
+        txt = f"🎮 **ရွေးချယ်ထားသော အကောင့်:** {phone_txt}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ်\n\n⚠️ Admin ကိုယ်တိုင် ဆောင်ရွက်ပေးရမည့် အမျိုးအစား ဖြစ်ပါသည်။"
         
         try:
             bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
@@ -1011,104 +787,13 @@ def admin_reject_digital_order(call):
         bot.send_message(user_id, "⚠️ တောင်းပန်ပါတယ်၊ သင်တင်ပြလာသော ငွေလွှဲပြေစာ (SS) မမှန်ကန်ပါသဖြင့် အော်ဒါကို ပယ်ချလိုက်ပါသည်။")
     except Exception: pass
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("paypoints_auto_"))
-def pay_points_auto(call):
-    nid = int(call.data.split("_")[2])
-    uid = call.from_user.id
-    fname = call.from_user.first_name
-    
-    with sqlite3.connect('vip_shop.db') as conn:
-        c = conn.cursor()
-        item = c.execute("SELECT phone_number, price, digital_info FROM numbers WHERE id=? AND status='AVAILABLE'", (nid,)).fetchone()
-        user = c.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
-        
-        if not item or not user:
-            bot.answer_callback_query(call.id, "ပစ္စည်း မရှိတော့ပါ သို့မဟုတ် အကောင့်အချက်အလက် မှားယွင်းနေပါသည်။", show_alert=True)
-            return
-            
-        phone = item[0]
-        price = item[1]
-        digi_info = item[2]
-        balance = user[0]
-        
-        if balance < price:
-            bot.answer_callback_query(call.id, "လက်ကျန်ငွေ (Points) မလုံလောက်ပါ။", show_alert=True)
-            return
-            
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (price, uid))
-        c.execute("UPDATE numbers SET status='SOLD' WHERE id=?", (nid,))
-        c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id, status) VALUES (?, ?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, "Paid with Points (Auto)", nid, "COMPLETED"))
-        conn.commit()
-        oid = c.lastrowid
-        
-    bot.answer_callback_query(call.id, "Points ဖြင့် ငွေချေမှု အောင်မြင်ပါသည်။")
-    
-    txt = f"🎉 **ဝယ်ယူမှု အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
-          f"🎮 **အကောင့်:** {phone}\n" \
-          f"🔑 **အချက်အလက် (Account Info):**\n`{digi_info}`\n\n" \
-          f"ကျေးဇူးတင်ပါတယ်။ အချက်အလက်များကို Copy ကူးယူနိုင်ပါပြီ။"
-    
-    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    
-    try:
-        user_link = f"[{fname}](tg://user?id={uid})"
-        bot.send_message(ADMIN_ID, f"🔔 **Digital (AUTO - Points ဖြင့်ဝယ်) ရောင်းထွက်သည်:** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 အကောင့်: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်", parse_mode="Markdown")
-    except Exception: pass
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("paypoints_manual_"))
-def pay_points_manual(call):
-    nid = int(call.data.split("_")[2])
-    uid = call.from_user.id
-    fname = call.from_user.first_name
-    
-    with sqlite3.connect('vip_shop.db') as conn:
-        c = conn.cursor()
-        item = c.execute("SELECT phone_number, price FROM numbers WHERE id=? AND status='AVAILABLE'", (nid,)).fetchone()
-        user = c.execute("SELECT balance FROM users WHERE user_id=?", (uid,)).fetchone()
-        
-        if not item or not user:
-            bot.answer_callback_query(call.id, "ပစ္စည်း မရှိတော့ပါ။", show_alert=True)
-            return
-            
-        phone = item[0]
-        price = item[1]
-        balance = user[0]
-        
-        if balance < price:
-            bot.answer_callback_query(call.id, "လက်ကျန်ငွေ (Points) မလုံလောက်ပါ။", show_alert=True)
-            return
-            
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (price, uid))
-        c.execute("INSERT INTO orders (user_id, customer_name, chosen_number, price, contact_info, ref_id) VALUES (?, ?, ?, ?, ?, ?)", (uid, fname, phone, price, "Paid with Points (Manual)", nid))
-        conn.commit()
-        oid = c.lastrowid
-        
-    bot.answer_callback_query(call.id, "Points ဖြင့် ငွေချေမှု အောင်မြင်ပါသည်။")
-    
-    txt = f"✅ **အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။** (#ORD-{oid:03d})\n\n" \
-          f"🎮 **ပစ္စည်း:** {phone}\n💰 **ကျသင့်ငွေ:** {price:,.0f} ကျပ် (Points မှ ဖြတ်တောက်ပြီးပါပြီ)\n\n" \
-          f"💬 ကျေးဇူးပြု၍ Admin 👉 @orange310199 ထံသို့ Message ပို့၍ ဝန်ဆောင်မှုရယူပါ။"
-    
-    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
-    
-    try:
-        user_link = f"[{fname}](tg://user?id={uid})"
-        admin_msg = f"🔔 **အော်ဒါသစ် (Points ဖြင့်ပေးချေပြီး):** #ORD-{oid:03d}\n👤 ဝယ်သူ: {user_link}\n🛍 မှာယူသည့်အရာ: {phone}\n💰 ဈေးနှုန်း: {price:,.0f} ကျပ်"
-        admin_markup = types.InlineKeyboardMarkup(row_width=1)
-        admin_markup.add(
-            types.InlineKeyboardButton("✅ ပြီးစီးပါပြီ (Completed)", callback_data=f"admin_comp_ord_{oid}"),
-            types.InlineKeyboardButton("❌ ဤအော်ဒါကို Cancel မည်", callback_data=f"admin_cancel_ord_{oid}")
-        )
-        bot.send_message(ADMIN_ID, admin_msg, reply_markup=admin_markup, parse_mode="Markdown")
-    except Exception: pass
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_buy_"))
 def user_cancel_buy(call):
     bot.clear_step_handler_by_chat_id(call.message.chat.id)
     bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
 
 def save_order(message, phone, price, nid):
-    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ", "👛 မိမိအကောင့်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
+    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
         bot.send_message(message.chat.id, "❌ ပယ်ဖျက်လိုက်ပါသည်။")
         return
     info = message.text
@@ -1140,15 +825,12 @@ def save_order(message, phone, price, nid):
     except Exception:
         pass
 
-# 🚀 Render အတွက် Webhook ချိတ်ဆက်မှုနှင့် Flask App စတင်ခြင်း
-def set_bot_webhook():
-    render_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if render_url:
-        bot.remove_webhook()
-        time.sleep(1)
-        bot.set_webhook(url=f"{render_url}/{TOKEN}")
-        print(f"Webhook successfully set to: {render_url}/{TOKEN}")
-
+# 🚀 Bot စတင် Run ရန် (Polling mode သို့မဟုတ် Render အတွက်)
+print("Bot is running...")
 if __name__ == "__main__":
-    set_bot_webhook()
-    app.run(host='0.0.0.0', port=PORT, debug=False)
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(5)
