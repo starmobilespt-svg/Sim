@@ -14,7 +14,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
 ADMIN_ID = 8668319365
 CHANNEL_USERNAME = "@starmobile63956"
-ITEMS_PER_PAGE = 5
+ITEMS_PER_PAGE = 10
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -85,7 +85,8 @@ def check_user_channel(user_id):
 def main_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     markup.add("✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်")
-    markup.add("📡 Operator အလိုက်ကြည့်မည်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
+    markup.add("📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ") 
+    markup.add("📞 ဆိုင်နှင့် ဆက်သွယ်ရန်")
     if user_id == ADMIN_ID: markup.add("👑 Admin Panel")
     return markup
 
@@ -130,18 +131,22 @@ def require_channel_join(func):
 def show_admin_panel(message):
     if message.from_user.id != ADMIN_ID: return
     text = "👑 **Admin Control Panel**\n\n" + \
-           "အောက်ပါ Button များမှတစ်ဆင့် လွယ်ကူစွာ စီမံခန့်ခွဲနိုင်ပါသည်။\n\n" + \
-           "📌 **နံပါတ်အသစ်ထည့်ရန် (Command):**\n" + \
-           "`/addnum ဖုန်းနံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
-           "*(ဥပမာ: `/addnum 09 777 888 999, 150000, PRO`)*\n\n" + \
-           "📌 **Broadcast စာပို့ရန် (Command):**\n" + \
+           "📌 **ဖုန်းနံပါတ်အသစ်ထည့်ရန်:**\n" + \
+           "`/addnum နံပါတ်, ဈေးနှုန်း, အမျိုးအစား`\n" + \
+           "*(ဥပမာ: /addnum 09 777 888 999, 150000, PRO)*\n\n" + \
+           "📌 **Digital Acc အသစ်ထည့်ရန်:**\n" + \
+           "`/addacc အကောင့်အမည်, ဈေးနှုန်း, Platform`\n" + \
+           "*(ဥပမာ: /addacc Netflix 1 Month, 15000, Netflix)*\n\n" + \
+           "📌 **ပစ္စည်း အလွယ်ဖျက်ရန်:**\n" + \
+           "`/del` ဟု ရိုက်ထည့်ပါ (သို့) အောက်ပါ ခလုတ်ကို နှိပ်ပါ။\n\n" + \
+           "📌 **Broadcast စာပို့ရန်:**\n" + \
            "`/broadcast စာသား`"
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("📦 အော်ဒါများကြည့်ရန် / Cancel လုပ်ရန်", callback_data="admin_view_orders"),
-        types.InlineKeyboardButton("📊 အရောင်းစာရင်း (Sales Report)", callback_data="admin_sales_report"), # 📌 ခလုတ်အသစ်
-        types.InlineKeyboardButton("📱 ဖုန်းနံပါတ်များကြည့်ရန် / ဖျက်ရန်", callback_data="admin_view_numbers"),
+        types.InlineKeyboardButton("📊 အရောင်းစာရင်း (Sales Report)", callback_data="admin_sales_report"),
+        types.InlineKeyboardButton("🗑️ ရောင်းရန်ရှိသည့် ပစ္စည်းများဖျက်ရန်", callback_data="admin_del_list_0"),
         types.InlineKeyboardButton("💾 Database Backup ယူမည်", callback_data="admin_do_backup"),
         types.InlineKeyboardButton("🔄 Database Restore လုပ်မည်", callback_data="admin_start_restore")
     )
@@ -155,13 +160,10 @@ def admin_sales_report(call):
     
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
-        
-        # 1. စုစုပေါင်း အရောင်းစာရင်း (Total Sales & Orders)
         total_data = c.execute("SELECT SUM(price), COUNT(id) FROM orders WHERE status='COMPLETED'").fetchone()
         total_rev = total_data[0] if total_data[0] else 0
         total_orders = total_data[1] if total_data[1] else 0
         
-        # 2. လအလိုက် အရောင်းစာရင်း (Monthly Breakdown) - SQLite ၏ strftime ကို အသုံးပြု၍ လ/နှစ် ခွဲထုတ်ခြင်း
         monthly_data = c.execute("SELECT strftime('%Y-%m', date) as month_year, COUNT(id), SUM(price) FROM orders WHERE status='COMPLETED' GROUP BY month_year ORDER BY month_year DESC").fetchall()
         
     text = "📊 **အရောင်းစာရင်း ချုပ် (Sales Report)**\n"
@@ -175,8 +177,8 @@ def admin_sales_report(call):
         text += "မှတ်တမ်း မရှိသေးပါ။"
     else:
         for r in monthly_data:
-            month_str = r[0]   # ဥပမာ: 2026-07
-            count = r[1]       # အော်ဒါအရေအတွက်
+            month_str = r[0]   
+            count = r[1]       
             m_total = r[2] if r[2] else 0
             text += f"🔹 **{month_str}** : {m_total:,.0f} ကျပ် ({count} ခု)\n"
             
@@ -198,7 +200,7 @@ def admin_view_orders(call):
         phone_txt = str(r[2])
         txt = "📦 **အော်ဒါနံပါတ်:** #ORD-" + "{:03d}".format(r[0]) + "\n" + \
               "👤 **ဝယ်သူ:** " + str(r[1]) + " (ID: `" + str(r[5]) + "`)\n" + \
-              "📱 **မှာယူသည့်နံပါတ်:** `" + phone_txt + "`\n" + \
+              "🛍 **မှာယူသည့်အရာ:** `" + phone_txt + "`\n" + \
               "💰 **ကျသင့်ငွေ:** " + "{:,.0f}".format(r[3]) + " ကျပ်\n" + \
               "📍 **လိပ်စာ:** " + str(r[4])
         
@@ -255,41 +257,92 @@ def admin_cancel_order(call):
                 bot.send_message(user_id, "ℹ️ သင်၏ အော်ဒါ #ORD-" + "{:03d}".format(oid) + " (`" + phone_txt + "`) ကို Admin မှ ပယ်ဖျက်လိုက်ပါပြီ။")
             except Exception: pass
 
-# 👑 ADMIN: မှားထည့်ထားသော ဖုန်းနံပါတ်များ ဖျက်ရန်
-@bot.callback_query_handler(func=lambda call: call.data == "admin_view_numbers")
-def admin_view_numbers(call):
-    if call.from_user.id != ADMIN_ID: return
+# 📌 ဖျက်ရန် စာရင်းကို လွယ်ကူစွာ ပြပေးမည့် Function 
+def show_delete_list(chat_id, page, is_edit=False, message_id=None):
     with sqlite3.connect('vip_shop.db') as conn:
-        rows = conn.cursor().execute("SELECT id, phone_number, operator, price, status FROM numbers ORDER BY id DESC LIMIT 10").fetchall()
-    
-    if not rows:
-        bot.answer_callback_query(call.id, "နံပါတ် မရှိသေးပါ။", show_alert=True)
-        return
-    
-    bot.answer_callback_query(call.id)
+        c = conn.cursor()
+        tot = c.execute("SELECT COUNT(*) FROM numbers WHERE status='AVAILABLE'").fetchone()[0]
+        if tot == 0:
+            if is_edit: bot.edit_message_text("📭 ရောင်းရန် ပစ္စည်း မရှိသေးပါ။", chat_id, message_id)
+            else: bot.send_message(chat_id, "📭 ရောင်းရန် ပစ္စည်း မရှိသေးပါ။")
+            return
+            
+        tpages = math.ceil(tot / ITEMS_PER_PAGE)
+        if page >= tpages: page = tpages - 1
+        if page < 0: page = 0
+            
+        rows = c.execute("SELECT id, phone_number, price, num_type FROM numbers WHERE status='AVAILABLE' ORDER BY id DESC LIMIT ? OFFSET ?", (ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
+        
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
-        status_txt = "AVAILABLE" if r[4] == 'AVAILABLE' else "SOLD"
-        phone_txt = str(r[1])
-        btn_txt = "📱 " + phone_txt + " (" + str(r[2]) + ") - " + "{:,.0f}".format(r[3]) + " ကျပ် [" + status_txt + "]"
-        markup.add(types.InlineKeyboardButton("🗑️ ဖျက်မည်: " + phone_txt, callback_data="admin_del_num_" + str(r[0])))
+        item_name = str(r[1])
+        price_str = "{:,.0f}".format(r[2])
+        ntype = str(r[3])
+        # 📌 နှိပ်လိုက်တာနဲ့ ဘယ်စာမျက်နှာကို ပြန်လာရမလဲဆိုတာ page parameter ထည့်ထားပေးတယ်
+        btn_txt = f"🗑 {item_name} ({price_str} Ks) [{ntype}]"
+        markup.add(types.InlineKeyboardButton(btn_txt, callback_data=f"admin_del_item_{r[0]}_{page}"))
+        
+    nav = []
+    if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data=f"admin_del_list_{page-1}"))
+    if page < tpages - 1: nav.append(types.InlineKeyboardButton("နောက်သို့ ➡️", callback_data=f"admin_del_list_{page+1}"))
+    if nav: markup.row(*nav)
     
-    bot.send_message(call.message.chat.id, "📱 **နောက်ဆုံးထည့်ထားသော နံပါတ် (၁၀) ခု -**\n*(ဖျက်လိုပါက အောက်ပါ Button ကို နှိပ်ပါ)*", reply_markup=markup, parse_mode="Markdown")
+    title = f"🗑️ **ပစ္စည်းများ ဖျက်ရန်** ({page+1}/{tpages})\n\n*(ဖျက်လိုသော ပစ္စည်းကို နှိပ်ပါ၊ စာရင်းမှာ ချက်ချင်း Refresh ဖြစ်သွားပါမည်)*"
+    try:
+        if is_edit:
+            bot.edit_message_text(title, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, title, reply_markup=markup, parse_mode="Markdown")
+    except Exception: pass
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_del_num_"))
-def admin_delete_number(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_del_list_"))
+def admin_delete_list_paginated(call):
     if call.from_user.id != ADMIN_ID: return
-    nid = int(call.data.split("_")[3])
+    page = int(call.data.split("_")[3])
+    show_delete_list(call.message.chat.id, page, is_edit=True, message_id=call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_del_item_"))
+def admin_delete_item_action(call):
+    if call.from_user.id != ADMIN_ID: return
+    parts = call.data.split("_")
+    nid = int(parts[3])
+    page = int(parts[4]) # 📌 လက်ရှိ ဘယ်စာမျက်နှာမှာ ရောက်နေလဲဆိုတာ
+    
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
         num = c.execute("SELECT phone_number FROM numbers WHERE id=?", (nid,)).fetchone()
         if num:
             c.execute("DELETE FROM numbers WHERE id=?", (nid,))
             conn.commit()
-            bot.answer_callback_query(call.id, "နံပါတ် " + str(num[0]) + " ကို ဖျက်လိုက်ပါပြီ။", show_alert=True)
-            bot.delete_message(call.message.chat.id, call.message.message_id)
+            # 📌 ဖျက်လိုက်ကြောင်း ပြပေးပြီး ပျောက်သွားအောင် show_alert=False လုပ်ထားသည်
+            bot.answer_callback_query(call.id, f"✅ '{num[0]}' ကို ဖျက်လိုက်ပါပြီ။", show_alert=False)
+            
+            # 📌 စာရင်းကို အလိုအလျောက် Refresh ပြန်လုပ်ပေးမည် (Message ပျောက်မသွားတော့ပါ)
+            show_delete_list(call.message.chat.id, page, is_edit=True, message_id=call.message.message_id)
         else:
-            bot.answer_callback_query(call.id, "နံပါတ် မတွေ့ရှိပါ။", show_alert=True)
+            bot.answer_callback_query(call.id, "ပစ္စည်း မတွေ့ရှိပါ။", show_alert=True)
+
+# 👑 ADMIN: /del Command ဖြင့် ပစ္စည်းဖျက်ရန်
+@bot.message_handler(commands=['del'])
+def admin_delete_by_name(message):
+    if message.from_user.id != ADMIN_ID: return
+    item_name = message.text.replace("/del", "").strip()
+    
+    # 📌 ဘာနာမည်မှ မရိုက်ဘဲ /del လို့သာ ရိုက်ရင် ပစ္စည်းတွေ အကုန်ပြပေးမည့် List ကို ခေါ်ပေးမည်
+    if not item_name:
+        show_delete_list(message.chat.id, 0, is_edit=False)
+        return
+        
+    with sqlite3.connect('vip_shop.db') as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM numbers WHERE phone_number=? AND status='AVAILABLE'", (item_name,))
+        rows = c.fetchall()
+        if not rows:
+            bot.send_message(message.chat.id, f"❌ ရောင်းရန်စာရင်းထဲတွင် '{item_name}' ကို မတွေ့ပါ။\n(ရှာမတွေ့ပါက `/del` ဟုသာ ရိုက်ထည့်၍ ခလုတ်များဖြင့် ရှာဖွေနိုင်ပါသည်)")
+            return
+        c.execute("DELETE FROM numbers WHERE phone_number=? AND status='AVAILABLE'", (item_name,))
+        conn.commit()
+    bot.send_message(message.chat.id, f"✅ '{item_name}' (စုစုပေါင်း {len(rows)} ခု) ကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။")
 
 # 👑 ADMIN: DATABASE BACKUP & RESTORE
 @bot.callback_query_handler(func=lambda call: call.data == "admin_do_backup")
@@ -349,9 +402,7 @@ def admin_add_number(message):
             bot.send_message(message.chat.id, "❌ ဥပမာ - `/addnum 09 777 888 999, 150000, PRO`", parse_mode="Markdown")
             return
         
-        # 📌 ဖုန်းနံပါတ်ကို Admin ရေးထည့်သည့်အတိုင်း အတိအကျ သိမ်းဆည်းရန် ပြင်ဆင်ထားသည်
         phone = parts[0].strip()
-        
         price = float(parts[1].strip())
         ntype = parts[2].strip().upper()
         op = detect_operator(phone)
@@ -359,6 +410,28 @@ def admin_add_number(message):
             conn.cursor().execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, ntype))
             conn.commit()
         bot.send_message(message.chat.id, "✅ ဖုန်းနံပါတ် " + phone + " (" + op + ") ထည့်ပြီးပါပြီ။")
+    except Exception as e:
+        bot.send_message(message.chat.id, "❌ Error: " + str(e))
+
+# 📌 DIGITAL ACC အသစ်ထည့်ရန် Command
+@bot.message_handler(commands=['addacc'])
+def admin_add_acc(message):
+    if message.from_user.id != ADMIN_ID: return
+    try:
+        parts = message.text.replace("/addacc", "").strip().split(',')
+        if len(parts) != 3:
+            bot.send_message(message.chat.id, "❌ ဥပမာ - `/addacc Netflix 1 Month, 15000, Netflix`", parse_mode="Markdown")
+            return
+        
+        acc_name = parts[0].strip()
+        price = float(parts[1].strip())
+        platform = parts[2].strip()
+        ntype = "DIGITAL"
+        
+        with sqlite3.connect('vip_shop.db') as conn:
+            conn.cursor().execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (acc_name, platform, price, ntype))
+            conn.commit()
+        bot.send_message(message.chat.id, f"✅ Digital Acc '{acc_name}' ထည့်ပြီးပါပြီ။")
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
 
@@ -382,12 +455,19 @@ def show_pro_numbers(message):
 def show_lucky_numbers(message):
     send_paginated_numbers(message.chat.id, "LUCKY", 0)
 
+# 📌 Digital Acc များ ကြည့်ရန်
+@bot.message_handler(func=lambda m: m.text == "🎮 Digital Acc များ")
+@require_channel_join
+def show_digital_accs(message):
+    send_paginated_numbers(message.chat.id, "DIGITAL", 0)
+
 def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None):
     with sqlite3.connect('vip_shop.db') as conn:
         c = conn.cursor()
         tot = c.execute("SELECT COUNT(*) FROM numbers WHERE num_type=? AND status='AVAILABLE'", (n_type,)).fetchone()[0]
         if tot == 0:
-            bot.send_message(chat_id, "📭 စာရင်း မရှိသေးပါ။")
+            if is_edit: bot.edit_message_text("📭 စာရင်း မရှိသေးပါ။", chat_id, message_id)
+            else: bot.send_message(chat_id, "📭 စာရင်း မရှိသေးပါ။")
             return
         tpages = math.ceil(tot / ITEMS_PER_PAGE)
         rows = c.execute("SELECT id, phone_number, operator, price FROM numbers WHERE num_type=? AND status='AVAILABLE' ORDER BY price ASC LIMIT ? OFFSET ?", (n_type, ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
@@ -402,7 +482,13 @@ def send_paginated_numbers(chat_id, n_type, page, is_edit=False, message_id=None
     if page < tpages - 1: nav.append(types.InlineKeyboardButton("နောက်သို့ ➡️", callback_data="page_" + n_type + "_" + str(page+1)))
     if nav: markup.row(*nav)
 
-    title = ("✨ နံပါတ်လှများ" if n_type == "PRO" else "🍀 Lucky Phone") + " (" + str(page+1) + "/" + str(tpages) + ")"
+    if n_type == "PRO": title_prefix = "✨ နံပါတ်လှများ"
+    elif n_type == "LUCKY": title_prefix = "🍀 Lucky Phone"
+    elif n_type == "DIGITAL": title_prefix = "🎮 Digital Accounts"
+    else: title_prefix = "📦 ပစ္စည်းများ"
+    
+    title = f"{title_prefix} ({page+1}/{tpages})"
+    
     if is_edit: bot.edit_message_text(title, chat_id, message_id, reply_markup=markup)
     else: bot.send_message(chat_id, title, reply_markup=markup)
 
@@ -419,19 +505,43 @@ def show_operators(message):
                types.InlineKeyboardButton("Ooredoo", callback_data="op_Ooredoo"), types.InlineKeyboardButton("Mytel", callback_data="op_Mytel"))
     bot.send_message(message.chat.id, "Operator ရွေးပါ -", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("op_"))
-def filter_by_operator(call):
-    op = call.data.split("_")[1]
+def send_paginated_operators(chat_id, op, page, is_edit=False, message_id=None):
     with sqlite3.connect('vip_shop.db') as conn:
-        rows = conn.cursor().execute("SELECT id, phone_number, price FROM numbers WHERE operator=? AND status='AVAILABLE' ORDER BY price ASC", (op,)).fetchall()
-    if not rows:
-        bot.answer_callback_query(call.id, "နံပါတ် မရှိပါ။")
-        return
+        c = conn.cursor()
+        tot = c.execute("SELECT COUNT(*) FROM numbers WHERE operator=? AND status='AVAILABLE'", (op,)).fetchone()[0]
+        if tot == 0:
+            if is_edit: bot.edit_message_text("📭 စာရင်း မရှိသေးပါ။", chat_id, message_id)
+            else: bot.send_message(chat_id, "📭 စာရင်း မရှိသေးပါ။")
+            return
+            
+        tpages = math.ceil(tot / ITEMS_PER_PAGE)
+        rows = c.execute("SELECT id, phone_number, price FROM numbers WHERE operator=? AND status='AVAILABLE' ORDER BY price ASC LIMIT ? OFFSET ?", (op, ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)).fetchall()
+
     markup = types.InlineKeyboardMarkup(row_width=1)
     for r in rows:
         phone_txt = str(r[1])
         markup.add(types.InlineKeyboardButton(phone_txt + " - " + "{:,.0f}".format(r[2]) + " ကျပ်", callback_data="buy_" + str(r[0])))
-    bot.edit_message_text("📡 *" + op + "* နံပါတ်များ -", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+
+    nav = []
+    if page > 0: nav.append(types.InlineKeyboardButton("⬅️ ရှေ့သို့", callback_data="oppage_" + op + "_" + str(page-1)))
+    if page < tpages - 1: nav.append(types.InlineKeyboardButton("နောက်သို့ ➡️", callback_data="oppage_" + op + "_" + str(page+1)))
+    if nav: markup.row(*nav)
+
+    title = "📡 *" + op + "* နံပါတ်များ (" + str(page+1) + "/" + str(tpages) + ")"
+    if is_edit: 
+        bot.edit_message_text(title, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+    else: 
+        bot.send_message(chat_id, title, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("op_"))
+def filter_by_operator(call):
+    op = call.data.split("_")[1]
+    send_paginated_operators(call.message.chat.id, op, 0, True, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("oppage_"))
+def handle_op_pagination(call):
+    p = call.data.split("_")
+    send_paginated_operators(call.message.chat.id, p[1], int(p[2]), True, call.message.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def process_buy(call):
@@ -439,13 +549,13 @@ def process_buy(call):
     with sqlite3.connect('vip_shop.db') as conn:
         item = conn.cursor().execute("SELECT phone_number, price, status FROM numbers WHERE id=?", (nid,)).fetchone()
     if not item or item[2] == 'SOLD':
-        bot.answer_callback_query(call.id, "ဤနံပါတ် မရှိတော့ပါ။", show_alert=True)
+        bot.answer_callback_query(call.id, "ဤပစ္စည်း မရှိတော့ပါ။", show_alert=True)
         return
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("❌ မဝယ်တော့ပါ", callback_data="cancel_buy_" + str(nid)))
     
     phone_txt = str(item[0])
-    txt = "🎯 နံပါတ်: " + phone_txt + "\n💰 ကျသင့်ငွေ: " + "{:,.0f}".format(item[1]) + " ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09 7950 96484\nWave: 09 7926 54163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
+    txt = "🎯 ရွေးချယ်ထားသောပစ္စည်း: " + phone_txt + "\n💰 ကျသင့်ငွေ: " + "{:,.0f}".format(item[1]) + " ကျပ်\n\n💳 Deli ခ 4,000 လွှဲရန်:\nKPay: 09 7950 96484\nWave: 09 7926 54163\n\n📝 နာမည်၊ ဖုန်း၊ လိပ်စာ အတိအကျ ရိုက်ထည့်ပေးပါ -"
     msg = bot.send_message(call.message.chat.id, txt, reply_markup=markup)
     bot.register_next_step_handler(msg, save_order, item[0], item[1], nid)
 
@@ -455,7 +565,7 @@ def user_cancel_buy(call):
     bot.send_message(call.message.chat.id, "ဝယ်ယူမှုကို ပယ်ဖျက်လိုက်ပါပြီ။", reply_markup=main_menu(call.from_user.id))
 
 def save_order(message, phone, price, nid):
-    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
+    if message.text in ["✨ နံပါတ်လှများကြည့်မည်", "🍀 Lucky Phone ကြည့်မည်", "📡 Operator အလိုက်ကြည့်မည်", "🎮 Digital Acc များ", "📞 ဆိုင်နှင့် ဆက်သွယ်ရန်", "👑 Admin Panel"]:
         bot.send_message(message.chat.id, "❌ ပယ်ဖျက်လိုက်ပါသည်။")
         return
     info = message.text
@@ -470,7 +580,7 @@ def save_order(message, phone, price, nid):
     bot.send_message(message.chat.id, "✅ အော်ဒါတင်ခြင်း အောင်မြင်ပါသည်။ (#ORD-" + "{:03d}".format(oid) + ")")
     try:
         phone_txt = str(phone)
-        bot.send_message(ADMIN_ID, "🔔 အော်ဒါသစ်: #ORD-" + "{:03d}".format(oid) + "\nဝယ်သူ: " + str(fname) + "\nဖုန်း: " + phone_txt + "\nဈေးနှုန်း: " + "{:,.0f}".format(price) + "\nလိပ်စာ: " + str(info))
+        bot.send_message(ADMIN_ID, "🔔 အော်ဒါသစ်: #ORD-" + "{:03d}".format(oid) + "\nဝယ်သူ: " + str(fname) + "\nမှာယူသည့်အရာ: " + phone_txt + "\nဈေးနှုန်း: " + "{:,.0f}".format(price) + "\nလိပ်စာ: " + str(info))
     except Exception:
         pass
 
