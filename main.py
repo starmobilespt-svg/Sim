@@ -11,7 +11,7 @@ import requests
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-TOKEN = "8753076212:AAHBn4zvIYrrSr3XJTumF6ZgHRSqQqWbT8U"
+TOKEN = "8753076212:AAEsYtFnZLW48EO3kFa5fTZeEr4UQPBrdc4"
 ADMIN_ID = 8668319365
 CHANNEL_USERNAME = "@starmobile63956"
 ITEMS_PER_PAGE = 10
