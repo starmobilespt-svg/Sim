@@ -472,10 +472,21 @@ def admin_add_number(message):
             conn.cursor().execute("INSERT INTO numbers (phone_number, operator, price, num_type) VALUES (?, ?, ?, ?)", (phone, op, price, ntype))
             conn.commit()
             
-        bot.send_message(message.chat.id, f"✅ ဖုန်းနံပါတ် {phone} ({op}) ထည့်ပြီးပါပြီ။ 📢 User အားလုံးဆီသို့ အကြောင်းကြားစာ အလိုအလျောက် ပို့ပေးနေပါသည်။")
+        bot.send_message(message.chat.id, f"✅ ဖုန်းနံပါတ် {phone} ({op}) ထည့်ပြီးပါပြီ။ 📢 User အားလုံးနှင့် Channel သို့ အကြောင်းကြားစာ Auto ပို့ပေးနေပါသည်။")
         
         alert_msg = f"🌟 **ပစ္စည်းအသစ် ရောက်ရှိပါပြီ** 🌟\n\n📱 **နံပါတ်:** `{phone}`\n📡 **Operator:** {op}\n💰 **ဈေးနှုန်း:** {price:,.0f} ကျပ်\n✨ **အမျိုးအစား:** {ntype}\n\n👉 ယခုပဲ Bot ထဲတွင် ဝင်ရောက်ဝယ်ယူနိုင်ပါပြီ။"
+        
+        # ၁။ User များကို Broadcast ပို့ရန်
         broadcast_to_users(text=alert_msg)
+        
+        # ၂။ Channel သို့ Auto Post တင်ရန်
+        try:
+            bot_info = bot.get_me()
+            channel_markup = types.InlineKeyboardMarkup()
+            channel_markup.add(types.InlineKeyboardButton("🛒 Bot တွင် သွားရောက်ဝယ်ယူရန်", url=f"https://t.me/{bot_info.username}"))
+            bot.send_message(CHANNEL_USERNAME, alert_msg, reply_markup=channel_markup, parse_mode="Markdown")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"⚠️ Channel သို့ Post တင်ရာတွင် အမှားဖြစ်နေပါသည် (Bot ကို Channel Admin ပေးထားရန်လိုပါသည်): {e}")
         
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
@@ -510,10 +521,21 @@ def admin_add_acc(message):
             conn.cursor().execute("INSERT INTO numbers (phone_number, operator, price, num_type, digital_info) VALUES (?, ?, ?, ?, ?)", (acc_name, platform, price, ntype, digital_info))
             conn.commit()
             
-        bot.send_message(message.chat.id, f"✅ Digital Acc ('{acc_name}' - {mode}) အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ 📢 User အားလုံးဆီသို့ အသိပေးစာ ပို့နေပါသည်။")
+        bot.send_message(message.chat.id, f"✅ Digital Acc ('{acc_name}' - {mode}) အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ။ 📢 User များနှင့် Channel သို့ Auto ပို့နေပါသည်။")
         
         alert_msg = f"🎮 **Digital Account အသစ် ရောက်ရှိပါပြီ** 🎮\n\n📌 **အမည်:** {acc_name}\n🌐 **Platform:** {platform}\n💰 **ဈေးနှုန်း:** {price:,.0f} ကျပ်\n\n👉 ယခုပဲ Bot ထဲတွင် ဝင်ရောက်ဝယ်ယူနိုင်ပါပြီ။"
+        
+        # ၁။ User များကို Broadcast ပို့ရန်
         broadcast_to_users(text=alert_msg)
+        
+        # ၂။ Channel သို့ Auto Post တင်ရန်
+        try:
+            bot_info = bot.get_me()
+            channel_markup = types.InlineKeyboardMarkup()
+            channel_markup.add(types.InlineKeyboardButton("🛒 Bot တွင် သွားရောက်ဝယ်ယူရန်", url=f"https://t.me/{bot_info.username}"))
+            bot.send_message(CHANNEL_USERNAME, alert_msg, reply_markup=channel_markup, parse_mode="Markdown")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"⚠️ Channel သို့ Post တင်ရာတွင် အမှားဖြစ်နေပါသည် (Bot ကို Channel Admin ပေးထားရန်လိုပါသည်): {e}")
         
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Error: " + str(e))
